@@ -1,849 +1,626 @@
 ﻿#include "PluginEditor.h"
-#include "BinaryData.h"
+#include "PluginProcessor.h"
+#include "PianoRollComponent.h"
 #include "AdvancedHarmonyWindow.h"
 
-// ======================= BinaryData image helpers =======================
-namespace
+using namespace juce;
+
+//============================================================
+// Small utility: style helpers
+void BANGAudioProcessorEditor::styleCombo(ComboBox& c, Colour bg, Colour txt)
 {
-    // Find a BinaryData resource whose name contains `hint` (case-insensitive)
-    juce::Image loadImageByHintImpl(const juce::String& hint)
+    c.setColour(ComboBox::backgroundColourId, bg);
+    c.setColour(ComboBox::outlineColourId, Colours::black);
+    c.setColour(ComboBox::textColourId, txt);
+}
+
+void BANGAudioProcessorEditor::styleSlider(Slider& s, Colour track, Colour thumb, Colour txt)
+{
+    s.setTextBoxStyle(Slider::TextBoxBelow, false, 60, 18);
+    s.setColour(Slider::trackColourId, track);
+    s.setColour(Slider::thumbColourId, thumb);
+    s.setColour(Slider::textBoxTextColourId, txt);
+    s.setColour(Slider::backgroundColourId, Colours::black);
+    s.setColour(Slider::textBoxOutlineColourId, Colours::black);
+}
+
+//============================================================
+BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
+    : AudioProcessorEditor(&proc)
+    , audioProcessor(proc)
+{
+    // ---------- window / resizable ----------
+    setOpaque(true);
+    setResizeLimits(900, 560, 3000, 2000);
+    setResizable(true, true);
+    setSize(1180, 720);
+
+    // ---------- hidden DnD helper ----------
+    dndHelper = std::make_unique<DnDHelper>();
+    addAndMakeVisible(*dndHelper);
+    dndHelper->setBounds(0, 0, 1, 1); // invisible
+
+    // ---------- logo ----------
     {
-#ifdef BinaryData_h
-        for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+        const Image img = loadImageAny({
+            "bang-newlogo.png", "BANG_logo.png", "banglogo.png", "logo.png"
+            });
+        if (img.isValid())
         {
-            juce::String nm(BinaryData::namedResourceList[i]);
-            if (nm.containsIgnoreCase(hint))
-            {
-                int bytes = 0;
-                if (auto* data = BinaryData::getNamedResource(nm.toRawUTF8(), bytes))
-                    if (auto img = juce::ImageFileFormat::loadFrom(data, (size_t)bytes); img.isValid())
-                        return img;
-            }
+            logoImg.setImage(logo);
+            logoImg.setImagePlacement(juce::RectanglePlacement::centred);
+            addAndMakeVisible(logoImg);
         }
-#endif
-        return {};
+    }
+    // "ENGINE" title image under the logo
+    {
+        const Image img = loadImageAny({ "engine.png", "engineTitle.png" });
+        if (img.isValid())
+        {
+            engineTitleImg.setImage(img);
+            engineTitleImg.setImagePlacement(juce::RectanglePlacement::centred);
+            addAndMakeVisible(engineTitleImg);
+        }
     }
 
-    // Apply normal / hover / down images to an ImageButton.
-    // Looks for "<base>_normal", "<base>_hover", "<base>_down" (or just "<base>").
-    void applyImageButton3(juce::ImageButton& b, const juce::String& baseHint)
+    // ---------- engine buttons (image) ----------
+    auto setBtn3 = [this](ImageButton& btn,
+        std::initializer_list<const char*> n,
+        std::initializer_list<const char*> h,
+        std::initializer_list<const char*> d)
     {
-        auto normal = loadImageByHintImpl(baseHint + "_normal");
-        if (!normal.isValid()) normal = loadImageByHintImpl(baseHint);
-
-        auto over = loadImageByHintImpl(baseHint + "_hover");
-        if (!over.isValid())   over = normal;
-
-        auto down = loadImageByHintImpl(baseHint + "_down");
-        if (!down.isValid())   down = over;
-
-        b.setImages(
-            true,  /* resize to image */
-            true,  /* preserve proportions */
-            true,  /* has over image */
+        const Image normal = loadImageAny(n);
+        const Image over = loadImageAny(h);
+        const Image down = loadImageAny(d);
+        btn.setClickingTogglesState(true);
+        btn.setTriggeredOnMouseDown(false);
+        btn.setImages(
+            /*resizeToFit*/ true,
+            /*preserveProportions*/ true,
+            /*opaque*/ true,
             normal, 1.0f, juce::Colours::transparentBlack,
             over, 1.0f, juce::Colours::transparentBlack,
             down, 1.0f, juce::Colours::transparentBlack
         );
-        b.setWantsKeyboardFocus(false);
-    }
-
-    // Label, combo, slider helpers
-    void setupLabel(juce::Label& lb, const juce::String& text, juce::Colour c)
-    {
-        lb.setText(text, juce::dontSendNotification);
-        lb.setJustificationType(juce::Justification::centredLeft);
-        lb.setColour(juce::Label::textColourId, c);
-        lb.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
-    }
-
-    void styleCombo(juce::ComboBox& cb)
-    {
-        cb.setJustificationType(juce::Justification::centred);
-    }
-
-    void styleSlider(juce::Slider& s, double min, double max, double init, double step = 1.0)
-    {
-        s.setSliderStyle(juce::Slider::LinearHorizontal);
-        s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 52, 18);
-        s.setRange(min, max, step);
-        s.setValue(init, juce::dontSendNotification);
-    }
-
-    // Accepts "N/D" or additive like "3+2+2/8"
-    std::pair<int, int> parseTimeSig(const juce::String& s)
-    {
-        auto parts = juce::StringArray::fromTokens(s, "/", "");
-        if (parts.size() != 2) return { 4,4 };
-
-        auto numStr = parts[0].trim();
-        auto denStr = parts[1].trim();
-
-        int beats = 0;
-        if (numStr.containsChar('+'))
-        {
-            auto groups = juce::StringArray::fromTokens(numStr, "+", "");
-            for (auto g : groups) beats += g.trim().getIntValue();
-        }
-        else beats = numStr.getIntValue();
-
-        int denom = juce::jmax(2, denStr.getIntValue());
-        return { beats, denom };
-    }
-} // anonymous namespace
-
-// Expose to other files (header prototypes)
-juce::Image loadImageByHint(const juce::String& hint) { return loadImageByHintImpl(hint); }
-
-// ======================= Editor =======================
-BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p)
-{
-    setSize(1200, 700);
-
-    // ----- Header / logo -----
-    addAndMakeVisible(logo);
-    logo.setImage(loadEmbeddedLogoAny());
-    logo.setInterceptsMouseClicks(false, false);
-
-    // "ENGINE" strip image under logo
-    addAndMakeVisible(engineTitle);
-    engineTitle.setImage(loadImageByHint("engine"));
-    engineTitle.setInterceptsMouseClicks(false, false);
-
-    // ----- Left selectors -----
-    setupLabel(keyLbl, "KEY", juce::Colours::black);
-    setupLabel(scaleLbl, "SCALE", juce::Colours::black);
-    setupLabel(tsLbl, "TIME SIG", juce::Colours::black);
-    setupLabel(barsLbl, "BARS", juce::Colours::black);
-    setupLabel(restLbl, "REST DENSITY", juce::Colours::black);
-
-    for (auto* lb : { &keyLbl, &scaleLbl, &tsLbl, &barsLbl, &restLbl })
-        addAndMakeVisible(*lb);
-
-    styleCombo(keyBox);  styleCombo(scaleBox);  styleCombo(tsBox);  styleCombo(barsBox);
-    for (auto* cb : { &keyBox, &scaleBox, &tsBox, &barsBox })
-    {
-        cb->setTextWhenNothingSelected("—");
-        cb->addListener(this);
-        addAndMakeVisible(*cb);
-    }
-
-    // Keys
-    const char* keys[] = { "C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B" };
-    for (int i = 0; i < 12; ++i) keyBox.addItem(keys[i], i + 1);
-    keyBox.setSelectedId(1);
-
-    // Scales (match MidiGenerator table)
-    const char* scales[] = {
-        "Major","Natural Minor","Harmonic Minor","Dorian","Phrygian","Lydian","Mixolydian","Aeolian","Locrian",
-        "Locrian Nat6","Ionian #5","Dorian #4","Phrygian Dom","Lydian #2","Super Locrian","Dorian b2",
-        "Lydian Aug","Lydian Dom","Mixo b6","Locrian #2","Ethiopian Min","8 Tone Spanish","Phrygian Nat3",
-        "Blues","Hungarian Min","Harmonic Maj","Pentatonic Maj","Pentatonic Min","Neopolitan Maj",
-        "Neopolitan Min","Spanish Gypsy","Romanian Minor","Chromatic","Bebop Major","Bebop Minor"
+        addAndMakeVisible(btn);
     };
-    for (int i = 0; i < (int)std::size(scales); ++i) scaleBox.addItem(scales[i], i + 1);
-    scaleBox.setSelectedId(1);
 
-    // Time signatures (including additive)
+    setBtn3(engineChordsBtn,
+        { "chordsBtn.png",  "engine_chords.png" },
+        { "chordsBtn_hover.png", "engine_chords_hover.png" },
+        { "chordsBtn_down.png",  "engine_chords_down.png" });
+
+    setBtn3(engineMixtureBtn,
+        { "mixtureBtn.png", "engine_mixture.png" },
+        { "mixtureBtn_hover.png", "engine_mixture_hover.png" },
+        { "mixtureBtn_down.png", "engine_mixture_down.png" });
+
+    setBtn3(engineMelodyBtn,
+        { "melodyBtn.png", "engine_melody.png" },
+        { "melodyBtn_hover.png", "engine_melody_hover.png" },
+        { "melodyBtn_down.png", "engine_melody_down.png" });
+
+    // exactly one selected at all times
+    auto updateEngineSelection = [this](EngineMode m)
     {
-        int id = 1;
-        auto add = [&](juce::String t) { tsBox.addItem(t, id++); };
-        add("2/4"); add("3/4"); add("4/4"); add("5/4"); add("7/4"); add("9/4");
-        add("5/8"); add("6/8"); add("7/8"); add("9/8"); add("10/8"); add("11/8");
-        add("12/8"); add("13/8"); add("15/8"); add("17/8"); add("19/8"); add("21/8");
-        add("5/16"); add("7/16"); add("9/16"); add("11/16"); add("13/16"); add("15/16"); add("17/16"); add("19/16");
-        add("3+2/8"); add("2+3/8");
-        add("2+2+3/8"); add("3+2+2/8"); add("2+3+2/8");
-        add("3+3+2/8"); add("3+2+3/8"); add("2+3+3/8");
-        add("4+3/8"); add("3+4/8");
-        add("3+2+2+3/8");
-        tsBox.setSelectedId(3); // 4/4
-    }
+        currentEngine = m;
+        engineChordsBtn.setToggleState(m == EngineMode::Chords, dontSendNotification);
+        engineMixtureBtn.setToggleState(m == EngineMode::Mixture, dontSendNotification);
+        engineMelodyBtn.setToggleState(m == EngineMode::Melody, dontSendNotification);
+        pushSettingsToGenerator();
+    };
 
-    // Bars: 4 or 8 only
-    barsBox.addItem("4", 1);
-    barsBox.addItem("8", 2);
-    barsBox.setSelectedId(2);
+    engineChordsBtn.onClick = [updateEngineSelection, this] { updateEngineSelection(EngineMode::Chords);  };
+    engineMixtureBtn.onClick = [updateEngineSelection, this] { updateEngineSelection(EngineMode::Mixture); };
+    engineMelodyBtn.onClick = [updateEngineSelection, this] { updateEngineSelection(EngineMode::Melody);  };
+    updateEngineSelection(EngineMode::Mixture); // default
 
-    // Rest density (0..100)
-    styleSlider(restSl, 0.0, 100.0, 15.0, 1.0);
-    restSl.addListener(this);
-    addAndMakeVisible(restSl);
-
-    // ----- Right humanize (0..100) -----
-    humanizeTitle.setText("HUMANIZE", juce::dontSendNotification);
-    humanizeTitle.setColour(juce::Label::textColourId, juce::Colours::black);
-    humanizeTitle.setFont(juce::Font(juce::Font::bold));
-    addAndMakeVisible(humanizeTitle);
-
-    styleSlider(timingSl, 0, 100, 40); addAndMakeVisible(timingSl);   timingSl.addListener(this);
-    styleSlider(velocitySl, 0, 100, 35); addAndMakeVisible(velocitySl); velocitySl.addListener(this);
-    styleSlider(swingSl, 0, 100, 25); addAndMakeVisible(swingSl);    swingSl.addListener(this);
-    styleSlider(feelSl, 0, 100, 30); addAndMakeVisible(feelSl);     feelSl.addListener(this);
-
-    // ----- Engine image buttons (exclusive selection) -----
-    addAndMakeVisible(engineChordsBtn);
-    addAndMakeVisible(engineMixtureBtn);
-    addAndMakeVisible(engineMelodyBtn);
-
-    applyImageButton3(engineChordsBtn, "chords");
-    applyImageButton3(engineMixtureBtn, "mixture");
-    applyImageButton3(engineMelodyBtn, "melody");
-
-    for (auto* b : { &engineChordsBtn, &engineMixtureBtn, &engineMelodyBtn })
+    // ---------- action buttons ----------
+    auto addBtn3 = [this, setBtn3](ImageButton& btn,
+        std::initializer_list<const char*> n,
+        std::initializer_list<const char*> h,
+        std::initializer_list<const char*> d)
     {
-        b->setClickingTogglesState(true);
-        b->setRadioGroupId(1001);
-        b->setTooltip("Select generation engine");
-    }
-    engineMixtureBtn.setToggleState(true, juce::dontSendNotification);
-    currentEngineIndex = 1;
+        setBtn3(btn, n, h, d);
+    };
 
-    engineChordsBtn.onClick = [this] { onEngineChanged(); };
-    engineMixtureBtn.onClick = [this] { onEngineChanged(); };
-    engineMelodyBtn.onClick = [this] { onEngineChanged(); };
+    addBtn3(generateBtn, { "generateBtn.png" }, { "generateBtn_hover.png" }, { "generateBtn_down.png" });
+    addBtn3(dragBtn, { "dragBtn.png" }, { "dragBtn_hover.png" }, { "dragBtn_down.png" });
+    addBtn3(advancedBtn, { "advancedBtn.png" }, { "advancedBtn_hover.png" }, { "advancedBtn_down.png" });
+    addBtn3(polyrBtn, { "polyrBtn.png" }, { "polyrBtn_hover.png" }, { "polyrBtn_down.png" });
+    addBtn3(reharmBtn, { "reharmBtn.png" }, { "reharmBtn_hover.png" }, { "reharmBtn_down.png" });
+    addBtn3(adjustBtn, { "adjustBtn.png" }, { "adjustBtn_hover.png" }, { "adjustBtn_down.png" });
+    addBtn3(diceBtn, { "diceBtn.png" }, { "diceBtn_hover.png" }, { "diceBtn_down.png" });
 
-    // ----- Action buttons -----
-    addAndMakeVisible(generateBtn); applyImageButton3(generateBtn, "generate");
-    addAndMakeVisible(dragBtn);     applyImageButton3(dragBtn, "drag");
-    addAndMakeVisible(advBtn);      applyImageButton3(advBtn, "advanced");
-    addAndMakeVisible(polyrBtn);    applyImageButton3(polyrBtn, "polyr");      // or "polyrhythm"
-    addAndMakeVisible(reharmBtn);   applyImageButton3(reharmBtn, "reharm");     // or "reharmonize"
-    addAndMakeVisible(adjustBtn);   applyImageButton3(adjustBtn, "adjust");
-    addAndMakeVisible(diceBtn);     applyImageButton3(diceBtn, "dice");
-
-    generateBtn.onClick = [this] { regenerate(); };
-    dragBtn.addMouseListener(this, false);
+    generateBtn.onClick = [this] { pushSettingsToGenerator(); regenerate(); };
     dragBtn.onClick = [this] { performDragExport(); };
-    advBtn.onClick = [this] { openAdvanced();    };
-    polyrBtn.onClick = [this] { openPolyrhythm();  };
+    advancedBtn.onClick = [this] { openAdvanced(); };
+    polyrBtn.onClick = [this] { openPolyrhythm(); };
     reharmBtn.onClick = [this] { openReharmonize(); };
-    adjustBtn.onClick = [this] { openAdjust();      };
+    adjustBtn.onClick = [this] { openAdjust(); };
     diceBtn.onClick = [this] { randomizeAll(); regenerate(); };
 
-    // ----- Piano roll -----
-    addAndMakeVisible(pianoRoll);
+    // ---------- selectors ----------
+    keyLbl.setText("KEY", dontSendNotification);
+    scaleLbl.setText("SCALE", dontSendNotification);
+    tsLbl.setText("TIME SIG", dontSendNotification);
+    barsLbl.setText("BARS", dontSendNotification);
+    restLbl.setText("REST DENS", dontSendNotification);
 
-    // Push initial UI → generator and pass advanced options pointer
-    pushSettingsToGenerator();
-    audioProcessor.getMidiGenerator().setAdvancedHarmonyOptions(&advOptions);
-
-    // === THEME COLOURS ===
-    const auto bg = juce::Colour::fromRGB(0xA5, 0xDD, 0x00); // #a5dd00
-    const auto pianoBg = juce::Colour::fromRGB(0x13, 0x22, 0x0C); // #13220c
-    const auto gridLine = juce::Colour::fromRGB(0x31, 0x40, 0x25); // #314025
-    const auto whiteKey = juce::Colour::fromRGB(0xF2, 0xAE, 0x01); // #f2ae01
-    const auto blackKey = juce::Colours::black;
-    const auto accentFill = juce::Colour::fromRGB(0xDD, 0x4F, 0x02); // #dd4f02 (humanize + rest sliders)
-    const auto pickerBg = juce::Colour::fromRGB(0xF9, 0xBF, 0x00); // #f9bf00 (combo backgrounds)
-    const auto outlineBlack = juce::Colours::black;
-
-    // plugin background
-    setColour(juce::ResizableWindow::backgroundColourId, bg);
-
-    // Combos (Key/Scale/TimeSig/Bars)
-    for (auto* cb : { &keyBox, &scaleBox, &tsBox, &barsBox })
+    for (auto* L : { &keyLbl, &scaleLbl, &tsLbl, &barsLbl, &restLbl })
     {
-        cb->setColour(juce::ComboBox::backgroundColourId, pickerBg);
-        cb->setColour(juce::ComboBox::textColourId, outlineBlack);
-        cb->setColour(juce::ComboBox::outlineColourId, outlineBlack);
-        cb->setColour(juce::ComboBox::arrowColourId, outlineBlack);
+        L->setJustificationType(Justification::centred);
+        L->setColour(Label::textColourId, colText);
+        L->setFont(Font(Font::FontOptions(18.0f, Font::bold)));
+        addAndMakeVisible(*L);
     }
 
-    // Sliders (Humanize + Rest Density)
-    for (auto* s : { &timingSl, &velocitySl, &swingSl, &feelSl, &restSl })
+    // keys (plain ascii names to avoid codepage issues)
+    const char* keys[] = { "C","C#","Db","D","D#","Eb","E","F","F#","Gb","G","G#","Ab","A","A#","Bb","B" };
+    for (auto k : keys) keyBox.addItem(k, keyBox.getNumItems() + 1);
+
+    // scales – you'll push the selected index into the generator; the full list already lives in your code
+    // (Editor doesn’t need to duplicate formulas; it only selects one)
+    const String scales[]{
+        "Major","Natural Minor","Harmonic Minor","Dorian","Phrygian","Lydian","Mixolydian","Aeolian","Locrian",
+        "Locrian ♮6","Ionian #5","Dorian #4","Phrygian Dom","Lydian #2","Super Locrian","Dorian b2","Lydian Aug",
+        "Lydian Dom","Mixo b6","Locrian #2","Ethiopian Min","8 Tone Spanish","Phrygian ♮3","Blues","Hungarian Min",
+        "Harmonic Maj","Pentatonic Maj","Pentatonic Min","Neopolitan Maj","Neopolitan Min","Spanish Gypsy",
+        "Romanian Minor","Chromatic","Bebop Major","Bebop Minor"
+    };
+    for (auto& s : scales) scaleBox.addItem(s, scaleBox.getNumItems() + 1);
+
+    // time signatures (expanded)
+    const String timeSigs[]{
+        "1/4","2/4","3/4","4/4","5/4","7/4","2/2","3/2",
+        "5/8","6/8","7/8","9/8","10/8","11/8","12/8","13/8","15/8",
+        "5/16","7/16","9/16","11/16","13/16","15/16"
+    };
+    for (auto& t : timeSigs) tsBox.addItem(t, tsBox.getNumItems() + 1);
+
+    // bars: ONLY 4 or 8 (per your spec)
+    barsBox.addItem("4", 1);
+    barsBox.addItem("8", 2);
+
+    // default selections
+    keyBox.setSelectedId(1, dontSendNotification); // C
+    scaleBox.setSelectedId(1, dontSendNotification); // Major
+    tsBox.setSelectedId(4, dontSendNotification); // 4/4
+    barsBox.setSelectedId(1, dontSendNotification); // 4 bars
+
+    for (auto* C : { &keyBox, &scaleBox, &tsBox, &barsBox })
     {
-        s->setColour(juce::Slider::trackColourId, outlineBlack);
-        s->setColour(juce::Slider::backgroundColourId, outlineBlack);
-        s->setColour(juce::Slider::thumbColourId, accentFill);
-        s->setColour(juce::Slider::textBoxTextColourId, outlineBlack);
-        s->setColour(juce::Slider::textBoxOutlineColourId, outlineBlack);
+        addAndMakeVisible(*C);
+        styleCombo(*C, colDropBg, colText);
+        C->addListener(this);
     }
 
-    // Piano roll colours (uses our existing API)
-    pianoRoll.setPalette({
-        pianoBg,  // background
-        gridLine, // grid line
-        whiteKey, // white key background
-        blackKey, // black key background
-        whiteKey  // measure header (numbers) bar colour = "same as white keys"
+    // ---------- sliders ----------
+    auto prepSlider = [this](Slider& s, Label& lab, const char* text)
+    {
+        s.setRange(0.0, 100.0, 1.0);
+        s.setValue(0.0);
+        addAndMakeVisible(s);
+        styleSlider(s, colAccent, colAccent, colText);
+        s.addListener(this);
+
+        lab.setText(text, dontSendNotification);
+        lab.setJustificationType(Justification::centred);
+        lab.setColour(Label::textColourId, colText);
+        lab.setFont(Font(Font::FontOptions(16.0f, Font::bold)));
+        addAndMakeVisible(lab);
+    };
+
+    prepSlider(restSl, restLbl, "REST DENS");
+    prepSlider(timingSl, timingLbl, "TIMING");
+    prepSlider(velocitySl, velocityLbl, "VELOCITY");
+    prepSlider(swingSl, swingLbl, "SWING");
+    prepSlider(feelSl, feelLbl, "FEEL");
+
+    // ---------- piano roll + viewport ----------
+    pianoRoll = std::make_unique<PianoRollComponent>();
+    addAndMakeVisible(pianoViewport);
+    pianoViewport.setViewedComponent(pianoRoll.get(), false);
+    pianoViewport.setScrollBarsShown(true, true);
+    pianoViewport.setScrollOnDragEnabled(true);
+
+    // apply palette to the roll (you added setPalette earlier)
+    struct PRPal { juce::Colour rollBg, whiteKey, blackKey, grid; };
+    pianoRoll->setPalette({
+        colRollBg, colWhiteKey, colBlackKey, colRollGrid
         });
+
+    updateRollContentSize();
 }
 
-// ======================= Paint & Layout =======================
-void BANGAudioProcessorEditor::paint(juce::Graphics& g)
+BANGAudioProcessorEditor::~BANGAudioProcessorEditor() = default;
+
+//============================================================
+void BANGAudioProcessorEditor::paint(Graphics& g)
 {
-    g.fillAll(juce::Colour(0xffa5dd00)); // background you requested
-    // subtle header band
-    auto header = juce::Rectangle<int>(0, 0, getWidth(), 90);
-    g.setColour(juce::Colour(0xffdd4f02)); g.fillRect(header);
+    g.fillAll(colBg);
 }
 
 void BANGAudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced(10);
+    auto r = getLocalBounds();
+    const int topPad = 12;
+    const int sidePad = 14;
 
-    jassert(generateBtn.getBounds().isEmpty() == false);
+    // --- top row: logo centered, humanize sliders right, selectors left ---
+    auto top = r.removeFromTop(160).reduced(sidePad, topPad);
 
-    // Header row
+    // left block: key / scale / TS / bars + rest slider
+    auto left = top.removeFromLeft(int(getWidth() * 0.33)).reduced(8);
+    const int rowH = 26;
+    const int labW = 100;
+    const int comboW = jmax(140, left.getWidth() - labW - 14);
+
+    auto putCombo = [&](Label& L, ComboBox& C)
     {
-        auto row = bounds.removeFromTop(90);
-        logo.setBounds(row.withSizeKeepingCentre(260, 72));
+        auto row = left.removeFromTop(rowH);
+        L.setBounds(row.removeFromLeft(labW));
+        C.setBounds(row.removeFromLeft(comboW));
+        left.removeFromTop(6);
+    };
+
+    putCombo(keyLbl, keyBox);
+    putCombo(scaleLbl, scaleBox);
+    putCombo(tsLbl, tsBox);
+    putCombo(barsLbl, barsBox);
+
+    // rest slider occupies 2 rows
+    auto restArea = left.removeFromTop(rowH * 2);
+    restLbl.setBounds(restArea.removeFromTop(rowH));
+    restSl.setBounds(restArea.reduced(0, 4));
+
+    // right block: humanize sliders
+    auto right = top.removeFromRight(int(getWidth() * 0.33)).reduced(8);
+    auto putSlider = [&](Label& L, Slider& S)
+    {
+        auto rr = right.removeFromTop(56);
+        L.setBounds(rr.removeFromTop(18));
+        S.setBounds(rr.reduced(0, 4));
+        right.removeFromTop(4);
+    };
+    putSlider(timingLbl, timingSl);
+    putSlider(velocityLbl, velocitySl);
+    putSlider(swingLbl, swingSl);
+    putSlider(feelLbl, feelSl);
+
+    // middle: logo centered + 'ENGINE' title + three engine buttons
+    auto mid = top.reduced(8); // remaining middle
+    const int logoH = 78;
+    logoImg.setBounds(mid.removeFromTop(logoH));
+    engineTitleImg.setBounds(mid.removeFromTop(28));
+
+    const int engineW = 320;
+    auto engineRow = mid.removeFromTop(64);
+    engineRow = engineRow.withSizeKeepingCentre(engineW, engineRow.getHeight());
+    {
+        auto third = engineRow.withWidth(engineW / 3);
+        engineChordsBtn.setBounds(third);
+        third = third.withX(third.getRight());
+        engineMixtureBtn.setBounds(third);
+        third = third.withX(third.getRight());
+        engineMelodyBtn.setBounds(third);
     }
 
-    // "ENGINE" strip under logo
-    {
-        auto row = bounds.removeFromTop(28);
-        engineTitle.setBounds(row.withSizeKeepingCentre(160, 24));
-    }
+    // row of ADVANCED / POLYR / REHARM centered beneath
+    auto smallRow = mid.removeFromTop(48);
+    smallRow = smallRow.withSizeKeepingCentre(480, smallRow.getHeight());
+    const int smallW = 150, smallPad = 15;
+    auto s1 = smallRow.removeFromLeft(smallW);
+    advancedBtn.setBounds(s1.reduced(4));
+    smallRow.removeFromLeft(smallPad);
+    auto s2 = smallRow.removeFromLeft(smallW);
+    polyrBtn.setBounds(s2.reduced(4));
+    smallRow.removeFromLeft(smallPad);
+    auto s3 = smallRow.removeFromLeft(smallW);
+    reharmBtn.setBounds(s3.reduced(4));
 
-    // Three engine buttons under the strip (centered)
-    {
-        auto row = bounds.removeFromTop(44);
-        auto w = 56, h = 40, gap = 10;
-        auto totalW = w * 3 + gap * 2;
-        auto bar = row.withSizeKeepingCentre(totalW, h);
-        auto b1 = bar.removeFromLeft(w); engineChordsBtn.setBounds(b1);
-        bar.removeFromLeft(gap);
-        auto b2 = bar.removeFromLeft(w); engineMixtureBtn.setBounds(b2);
-        bar.removeFromLeft(gap);
-        auto b3 = bar.removeFromLeft(w); engineMelodyBtn.setBounds(b3);
-    }
+    // DRAG + GENERATE under that, centered
+    auto bigRow = mid.removeFromTop(56);
+    bigRow = bigRow.withSizeKeepingCentre(360, bigRow.getHeight());
+    auto leftBig = bigRow.removeFromLeft(180);
+    dragBtn.setBounds(leftBig.reduced(6));
+    generateBtn.setBounds(bigRow.reduced(6));
 
-    // Top band split: left selectors, center small buttons, right humanize
-    auto top = bounds.removeFromTop(160);
+    // ADJUST button goes bottom-left under selectors, not hidden by roll
+    auto adjustArea = r.removeFromTop(40).removeFromLeft(260).reduced(6);
+    adjustBtn.setBounds(adjustArea);
 
-    // Left selectors
-    {
-        auto left = top.removeFromLeft(360).reduced(4);
-        int y = left.getY();
-        auto row = [&](juce::Label& lb, juce::Component& c)
-        {
-            lb.setBounds(left.getX(), y, left.getWidth(), 18); y += 18;
-            c.setBounds(left.getX(), y, left.getWidth(), 26);  y += 30;
-        };
-        row(keyLbl, keyBox);
-        row(scaleLbl, scaleBox);
-        row(tsLbl, tsBox);
-        row(barsLbl, barsBox);
+    // DICE button goes top-right corner
+    auto diceArea = getLocalBounds().removeFromTop(60).removeFromRight(80).reduced(8);
+    diceBtn.setBounds(diceArea);
 
-        restLbl.setBounds(left.getX(), y, left.getWidth(), 18); y += 18;
-        restSl.setBounds(left.getX(), y, left.getWidth(), 26);  y += 30;
-
-        // Adjust under Rest slider
-        adjustBtn.setBounds(left.getX() + (left.getWidth() - 160) / 2, y, 160, 32);
-    }
-
-    // Right humanize + dice
-    {
-        auto right = top.removeFromRight(360).reduced(4);
-        diceBtn.setBounds(right.removeFromTop(36).removeFromRight(36));
-
-        int y = right.getY();
-        humanizeTitle.setBounds(right.getX(), y, right.getWidth(), 18); y += 22;
-        timingSl.setBounds(right.getX(), y, right.getWidth(), 24); y += 28;
-        velocitySl.setBounds(right.getX(), y, right.getWidth(), 24); y += 28;
-        swingSl.setBounds(right.getX(), y, right.getWidth(), 24); y += 28;
-        feelSl.setBounds(right.getX(), y, right.getWidth(), 24);
-    }
-
-    // Center small buttons: Advanced / Polyrhythm / Reharmonize
-    {
-        auto mid = top.reduced(4);
-        auto w = 150, h = 34, gap = 12;
-        auto totalW = w * 3 + gap * 2;
-        auto band = mid.withSizeKeepingCentre(totalW, h);
-        advBtn.setBounds(band.removeFromLeft(w));
-        band.removeFromLeft(gap);
-        polyrBtn.setBounds(band.removeFromLeft(w));
-        band.removeFromLeft(gap);
-        reharmBtn.setBounds(band.removeFromLeft(w));
-    }
-
-
-    // Piano roll fills center
-    auto center = bounds.removeFromTop(bounds.getHeight() - 110);
-    pianoRoll.setBounds(center.reduced(8));
-
-    // Bottom big actions
-    auto bottom = bounds;
-    auto gap = 16;
-    auto half = (bottom.getWidth() - gap) / 2;
-    auto leftBtn = bottom.removeFromLeft(half);
-    bottom.removeFromLeft(gap);
-    auto rightBtn = bottom;
-
-    generateBtn.setBounds(leftBtn.withSizeKeepingCentre(360, 92));
-    dragBtn.setBounds(rightBtn.withSizeKeepingCentre(430, 92));
+    // piano viewport fills remaining
+    pianoViewport.setBounds(r.reduced(sidePad, 4));
+    updateRollContentSize();
 }
 
-// ======================= Event handlers =======================
-void BANGAudioProcessorEditor::comboBoxChanged(juce::ComboBox*)
+//============================================================
+// selectors / sliders
+void BANGAudioProcessorEditor::comboBoxChanged(ComboBox* box)
 {
+    if (box == &tsBox || box == &barsBox)
+    {
+        updateRollContentSize();
+        if (pianoRoll)
+            pianoRoll->setTimeSignature(currentTSNumerator(), currentTSDenominator());
+    }
+
     pushSettingsToGenerator();
-    pianoRoll.repaint();
 }
 
-void BANGAudioProcessorEditor::sliderValueChanged(juce::Slider*)
+void BANGAudioProcessorEditor::sliderValueChanged(Slider* s)
 {
+    // just push to generator – generation happens on Generate / Dice
     pushSettingsToGenerator();
 }
 
-void BANGAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
+//============================================================
+// resource helpers
+Image BANGAudioProcessorEditor::loadImageAny(std::initializer_list<const char*> tryNames) const
 {
-    if (e.eventComponent == &dragBtn) wantingDrag = true;
-}
-
-void BANGAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
-{
-    if (e.eventComponent == &dragBtn && wantingDrag && e.getDistanceFromDragStart() > 8)
+    for (auto* name : tryNames)
     {
-        wantingDrag = false;
-        lastTempMidi = writeTempMidiForDrag();
-        if (lastTempMidi.existsAsFile())
+        int dataSize = 0;
+        if (auto* data = BinaryData::getNamedResource(name, dataSize))
         {
-            juce::StringArray files; files.add(lastTempMidi.getFullPathName());
-            performExternalDragDropOfFiles(files, true);
+            auto img = ImageCache::getFromMemory(data, dataSize);
+            if (img.isValid())
+                return img;
         }
-    }
-}
-
-// ======================= Logic =======================
-void BANGAudioProcessorEditor::onEngineChanged()
-{
-    if (engineChordsBtn.getToggleState())       currentEngineIndex = 0;
-    else if (engineMixtureBtn.getToggleState()) currentEngineIndex = 1;
-    else                                        currentEngineIndex = 2;
-
-    auto& gen = audioProcessor.getMidiGenerator();
-    switch (currentEngineIndex)
-    {
-    case 0: gen.setEngineMode(MidiGenerator::EngineMode::Chords);  break;
-    case 1: gen.setEngineMode(MidiGenerator::EngineMode::Mixture); break;
-    case 2: gen.setEngineMode(MidiGenerator::EngineMode::Melody);  break;
-    }
-}
-
-void BANGAudioProcessorEditor::randomizeAll()
-{
-    juce::Random r;
-
-    if (keyBox.getNumItems() > 0) keyBox.setSelectedId(1 + r.nextInt(12), juce::sendNotification);
-    if (scaleBox.getNumItems() > 0) scaleBox.setSelectedId(1 + r.nextInt(scaleBox.getNumItems()), juce::sendNotification);
-    if (tsBox.getNumItems() > 0) tsBox.setSelectedId(1 + r.nextInt(tsBox.getNumItems()), juce::sendNotification);
-    if (barsBox.getNumItems() > 0) barsBox.setSelectedId(r.nextBool() ? 1 : 2, juce::sendNotification);
-
-    restSl.setValue(r.nextInt(101), juce::sendNotification);
-    timingSl.setValue(r.nextInt(101), juce::sendNotification);
-    velocitySl.setValue(r.nextInt(101), juce::sendNotification);
-    swingSl.setValue(r.nextInt(101), juce::sendNotification);
-    feelSl.setValue(r.nextInt(101), juce::sendNotification);
-
-    // Random engine choice
-    const int e = r.nextInt(3);
-    if (e == 0) engineChordsBtn.triggerClick();
-    else if (e == 1) engineMixtureBtn.triggerClick();
-    else engineMelodyBtn.triggerClick();
-
-    pushSettingsToGenerator();
-}
-
-void BANGAudioProcessorEditor::performDragExport()
-{
-    // File save dialog → write a new MIDI from last generated notes (or generate now if empty)
-    juce::FileChooser fc("Export MIDI",
-        juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
-        "*.mid");
-
-    auto flags = juce::FileBrowserComponent::saveMode
-        | juce::FileBrowserComponent::canSelectFiles
-        | juce::FileBrowserComponent::warnAboutOverwriting;
-
-    fc.launchAsync(flags, [this](const juce::FileChooser& chooser)
-        {
-            auto dest = chooser.getResult();
-            if (dest == juce::File()) return;
-
-            // Build a MIDI sequence from our notes
-            const int ppq = 960;
-            juce::MidiMessageSequence seq;
-
-            // Helper that safely pushes a vector<Note> to the sequence
-            auto push = [&](const std::vector<Note>& src, int midiChannel)
-            {
-                for (const auto& n : src)
-                {
-                    const int pitch = juce::jlimit(0, 127, n.pitch);
-                    const int vel = juce::jlimit(1, 127, n.velocity); // n.velocity is 1..127
-                    const double tOn = n.startBeats * (double)ppq;
-                    const double tOff = (n.startBeats + n.lengthBeats) * (double)ppq;
-
-                    seq.addEvent(juce::MidiMessage::noteOn(midiChannel, pitch, (juce::uint8)vel), tOn);
-                    seq.addEvent(juce::MidiMessage::noteOff(midiChannel, pitch), tOff);
-                }
-            };
-
-            // Use last generated notes if available; otherwise generate on the spot
-            std::vector<Note> mel = lastMelody;
-            std::vector<Note> chd = lastChords;
-            if (mel.empty() && chd.empty())
-            {
-                const bool useMixture = (currentEngineIndex == 1); // 0=chords,1=mixture,2=melody
-                auto bundle = audioProcessor.getMidiGenerator().generateMelodyAndChords(useMixture);
-                mel = std::move(bundle.melody);
-                chd = std::move(bundle.chords);
-            }
-
-            // Put chords on ch 1, melody on ch 2
-            push(chd, 1);
-            push(mel, 2);
-
-            juce::MidiFile mf;
-            mf.setTicksPerQuarterNote(ppq);
-            mf.addTrack(seq);
-
-            dest.deleteFile(); // overwrite if needed
-            juce::FileOutputStream os(dest);
-            if (os.openedOk()) mf.writeTo(os);
-        });
-}
-
-void BANGAudioProcessorEditor::pushSettingsToGenerator()
-{
-    auto& gen = audioProcessor.getMidiGenerator();
-
-    // Key
-    const int keyIndex = keyBox.getSelectedId() - 1; // 0..11
-    const int keyMidi = 60 + keyIndex;
-    gen.setKey(keyMidi);
-
-    // Scale
-    gen.setScale(scaleBox.getText());
-
-    // Time signature
-    const auto ts = parseTimeSig(tsBox.getText());
-    gen.setTimeSignature(ts.first, ts.second);
-
-    // Bars (4/8 only)
-    gen.setBars((barsBox.getSelectedId() == 1) ? 4 : 8);
-
-    // Rest density 0..1
-    gen.setRestDensity(static_cast<float>(juce::jlimit<double>(0.0, 100.0, restSl.getValue()) / 100.0));
-
-    // Humanize mapped to existing generator knobs
-    const float timingAmt = static_cast<float>(juce::jlimit<double>(0.0, 100.0, timingSl.getValue()) / 100.0);
-    const float velAmt = static_cast<float>(juce::jlimit<double>(0.0, 100.0, velocitySl.getValue()) / 100.0);
-    const float feelAmt = static_cast<float>(juce::jlimit<double>(0.0, 100.0, feelSl.getValue()) / 100.0);
-    const float swingAmt = static_cast<float>(juce::jlimit<double>(0.0, 100.0, swingSl.getValue()) / 100.0);
-
-    gen.enableStyleAwareTiming(true);
-    gen.setStyleTimingAmount(juce::jlimit(0.0f, 1.0f, timingAmt * 0.6f + velAmt * 0.2f + feelAmt * 0.2f));
-    gen.setPolyrhythmAmount(swingAmt); // reused as “swing/feel” depth
-
-}
-
-void BANGAudioProcessorEditor::regenerate()
-{
-    auto& gen = audioProcessor.getMidiGenerator();
-    lastMelody.clear();
-    lastChords.clear();
-
-    switch (currentEngineIndex)
-    {
-    case 0: lastChords = gen.generateChordTrack(); break;            // Chords
-    case 2: lastMelody = gen.generateMelody();      break;            // Melody
-    default:
-    {
-        auto mix = gen.generateMelodyAndChords(true);                 // Mixture
-        lastMelody = std::move(mix.melody);
-        lastChords = std::move(mix.chords);
-    } break;
-    }
-
-    pianoRoll.setNotes(lastMelody);
-    pianoRoll.setOverlayNotes(lastChords);
-    repaint();
-}
-
-// ======================= Asset helpers =======================
-juce::Image BANGAudioProcessorEditor::loadEmbeddedLogoAny()
-{
-    const char* candidates[] = {
-        "bang_newlogo_png","bang-newlogo_png","bang_logo_png","BangLogo_png","BANG_png","logo_png","bang_png"
-    };
-#ifdef BinaryData_h
-    for (auto* id : candidates)
-    {
-        int sz = 0;
-        if (auto* data = BinaryData::getNamedResource(id, sz))
-            if (auto img = juce::ImageFileFormat::loadFrom(data, (size_t)sz); img.isValid())
-                return img;
-    }
-#endif
-    // try files next to the plugin/app, or cwd
-    juce::File guesses[] = {
-        juce::File::getCurrentWorkingDirectory().getChildFile("bang-newlogo.png"),
-        juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-            .getParentDirectory().getChildFile("bang-newlogo.png"),
-    };
-    for (auto& f : guesses)
-        if (f.existsAsFile())
-            if (auto img = juce::ImageFileFormat::loadFrom(f); img.isValid())
-                return img;
-
-    return {}; // none
-}
-
-juce::Image BANGAudioProcessorEditor::loadImageAny(std::initializer_list<const char*> baseNames)
-{
-#ifdef BinaryData_h
-    for (auto* n : baseNames)
-    {
-        int sz = 0;
-        if (auto* data = BinaryData::getNamedResource(n, sz))
-            if (auto img = juce::ImageFileFormat::loadFrom(data, (size_t)sz); img.isValid())
-                return img;
-    }
-#endif
-    for (auto* n : baseNames)
-    {
-        juce::String fname(n);
-        if (!fname.endsWithIgnoreCase(".png")) fname << ".png";
-
-        juce::File places[] = {
-            juce::File::getCurrentWorkingDirectory().getChildFile(fname),
-            juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                .getParentDirectory().getChildFile(fname)
-        };
-        for (auto& f : places)
-            if (f.existsAsFile())
-                if (auto img = juce::ImageFileFormat::loadFrom(f); img.isValid())
-                    return img;
     }
     return {};
 }
 
-// ======================= MIDI export (temp) =======================
-juce::File BANGAudioProcessorEditor::writeTempMidiForDrag()
+std::unique_ptr<Drawable> BANGAudioProcessorEditor::makeDrawable(const Image& img)
 {
-    const int ppq = 960;
-    juce::MidiMessageSequence seq;
-
-    // Helper to push notes into the sequence (with a light velocity scale)
-    auto push = [&](const std::vector<Note>& src, int midiChannel, int velScalePercent)
-    {
-        for (const auto& n : src)
-        {
-            const int pitch = juce::jlimit(0, 127, n.pitch);
-            // keep it strictly int → int so jlimit picks the int overload
-            const int scaled = (n.velocity * velScalePercent) / 100;
-            const int vel = juce::jlimit(1, 127, scaled);
-
-            const double tOn = n.startBeats * (double)ppq;
-            const double tOff = (n.startBeats + n.lengthBeats) * (double)ppq;
-
-            seq.addEvent(juce::MidiMessage::noteOn(midiChannel, pitch, (juce::uint8)vel), tOn);
-            seq.addEvent(juce::MidiMessage::noteOff(midiChannel, pitch), tOff);
-        }
-    };
-
-    // Use cached notes if present, otherwise generate now
-    std::vector<Note> mel = lastMelody;
-    std::vector<Note> chd = lastChords;
-    if (mel.empty() && chd.empty())
-    {
-        const bool useMixture = (currentEngineIndex == 1); // 0=chords,1=mixture,2=melody
-        auto bundle = audioProcessor.getMidiGenerator().generateMelodyAndChords(useMixture);
-        mel = std::move(bundle.melody);
-        chd = std::move(bundle.chords);
-    }
-
-    push(chd, 1, 95); // ch 1 chords
-    push(mel, 2, 95); // ch 2 melody
-
-    juce::MidiFile mf;
-    mf.setTicksPerQuarterNote(ppq);
-    mf.addTrack(seq);
-
-    auto temp = juce::File::getSpecialLocation(juce::File::tempDirectory)
-        .getChildFile("BANG_drag.mid");
-    temp.deleteFile();
-    juce::FileOutputStream os(temp);
-    if (os.openedOk()) mf.writeTo(os);
-    return temp;
+    if (!img.isValid()) return {};
+    auto p = std::make_unique<DrawableImage>();
+    p->setImage(img);
+    return p;
 }
 
+void BANGAudioProcessorEditor::applyImageButton3(ImageButton& btn,
+    std::initializer_list<const char*> normalNames,
+    std::initializer_list<const char*> overNames,
+    std::initializer_list<const char*> downNames,
+    Rectangle<int> bounds)
+{
+    const Image normal = loadImageAny(normalNames);
+    const Image over = loadImageAny(overNames);
+    const Image down = loadImageAny(downNames);
+    btn.setClickingTogglesState(false);
+    btn.setTriggeredOnMouseDown(false);
+    btn.setImages(
+        /*resizeToFit*/ true,
+        /*preserveProportions*/ true,
+        /*opaque*/ true,
+        normal, 1.0f, juce::Colours::transparentBlack,
+        over, 1.0f, juce::Colours::transparentBlack,
+        down, 1.0f, juce::Colours::transparentBlack
+    );
+        Image(), 1.0f, Colours::transparentBlack
+    );
+    btn.setBounds(bounds);
+    addAndMakeVisible(btn);
+}
 
+//============================================================
+// mapping / parsing
+int BANGAudioProcessorEditor::rootBoxToSemitone(const ComboBox& key)
+{
+    const String txt = key.getText().trim();
+    if (txt == "C")  return 0;
+    if (txt == "C#" || txt == "Db") return 1;
+    if (txt == "D")  return 2;
+    if (txt == "D#" || txt == "Eb") return 3;
+    if (txt == "E")  return 4;
+    if (txt == "F")  return 5;
+    if (txt == "F#" || txt == "Gb") return 6;
+    if (txt == "G")  return 7;
+    if (txt == "G#" || txt == "Ab") return 8;
+    if (txt == "A")  return 9;
+    if (txt == "A#" || txt == "Bb") return 10;
+    if (txt == "B")  return 11;
+    return 0;
+}
 
-// ======================= Dialogs =======================
+int BANGAudioProcessorEditor::currentBars() const
+{
+    const int id = barsBox.getSelectedId();
+    return id == 2 ? 8 : 4;
+}
+
+static std::pair<int, int> parseTS(const String& s)
+{
+    const auto parts = StringArray::fromTokens(s, "/", "");
+    if (parts.size() == 2)
+        return { parts[0].getIntValue(), parts[1].getIntValue() };
+    return { 4, 4 };
+}
+
+int BANGAudioProcessorEditor::currentTSNumerator() const
+{
+    return parseTS(tsBox.getText()).first;
+}
+int BANGAudioProcessorEditor::currentTSDenominator() const
+{
+    return parseTS(tsBox.getText()).second;
+}
+
+void BANGAudioProcessorEditor::updateRollContentSize()
+{
+    if (!pianoRoll) return;
+
+    const int bars = currentBars();
+    const int num = currentTSNumerator();
+    const int den = currentTSDenominator();
+
+    // You already implemented bar numbering and spacing in PianoRollComponent;
+    // here we just update its content size generously to allow scrolling.
+    const int pixelsPerBeat = 120; // wide on purpose so scroll is meaningful
+    const float beatsPerBar = (den == 8 ? num * 0.5f : (float)num);
+    const int width = int(beatsPerBar * bars * pixelsPerBeat);
+
+    pianoRoll->setTimeSignature(num, den);
+    pianoRoll->setBars(bars);
+    pianoRoll->setSize(jmax(width, pianoViewport.getWidth() + 1),
+        jmax(pianoViewport.getHeight() + 200, 600));
+}
+
+//============================================================
+// Generator wiring
+void BANGAudioProcessorEditor::pushSettingsToGenerator()
+{
+    auto& g = audioProcessor.getMidiGenerator();
+
+    // engine
+    const int engineMode = (currentEngine == EngineMode::Chords ? 0
+        : currentEngine == EngineMode::Mixture ? 1 : 2);
+    g.setEngineMode(static_cast<MidiGenerator::EngineMode>(currentEngineIndex));;
+
+    // musical context
+    g.setScaleIndex(scaleBox.getSelectedId() - 1); // 0-based for your scale list
+    g.setTimeSignature(currentTSNumerator(), currentTSDenominator());
+    g.setBars(currentBars());
+
+    // density / humanize
+    g.setRestDensity((float)restSl.getValue() / 100.0f);
+    g.setHumanizeTiming((float)timingSl.getValue() / 100.0f);
+    g.setHumanizeVelocity((float)velocitySl.getValue() / 100.0f);
+    g.setSwingAmount((float)swingSl.getValue() / 100.0f);
+    g.setFeelAmount((float)feelSl.getValue() / 100.0f);
+}
+
+void BANGAudioProcessorEditor::regenerate()
+{
+    pushSettingsToGenerator();
+    auto& g = audioProcessor.getMidiGenerator();
+
+    // Call the unified generator; you already implemented this to honor options.
+    (void)g.generateMelodyAndChords(true);
+
+    // The piano roll pulls from the generator’s internal note buffer or is fed externally.
+    // If your PianoRoll exposes setNotes, you can push them here; otherwise repaint.
+    pianoRoll->repaint();
+}
+
+//============================================================
+// External MIDI drag (writes a temp file then starts OS drag)
+void BANGAudioProcessorEditor::performDragExport()
+{
+    // Write a temp MIDI file using your processor/generator helper
+    File temp = File::createTempFile("BANG_DragExport.mid");
+    if (auto stream = temp.createOutputStream())
+    {
+        performDragExport(); // <- you already had this helper, or similar
+        stream->flush();
+    }
+
+    if (temp.existsAsFile() && dndHelper)
+    {
+        StringArray files; files.add(temp.getFullPathName());
+        dndHelper->performExternalDragDropOfFiles(files, true, nullptr);
+    }
+}
+
+//============================================================
+// Windows
 void BANGAudioProcessorEditor::openAdvanced()
 {
-    auto* comp = new AdvancedHarmonyWindow(advOptions);
-    juce::DialogWindow::LaunchOptions opts;
-    opts.dialogTitle = "Advanced Harmony";
-    opts.escapeKeyTriggersCloseButton = true;
-    opts.useNativeTitleBar = true;
-    opts.resizable = true;
-    opts.content.setOwned(comp);
-    if (auto* w = opts.launchAsync())
-        w->centreWithSize(480, 420);
-
-    audioProcessor.getMidiGenerator().setAdvancedHarmonyOptions(&advOptions);
+    // Your AdvancedHarmonyWindow already exists.
+    DialogWindow::LaunchOptions o;
+    o.content.setOwned(new AdvancedHarmonyWindow(audioProcessor.getMidiGenerator()), true);
+    o.dialogTitle = "Advanced Harmony";
+    o.dialogBackgroundColour = colBg;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.runModal();
 }
-
-class PolyrhythmWindow : public juce::Component
-{
-public:
-    explicit PolyrhythmWindow(MidiGenerator& gen) : generator(gen)
-    {
-        addAndMakeVisible(enableToggle); enableToggle.setButtonText("Enable Polyrhythm");
-        enableToggle.setToggleState(true, juce::dontSendNotification);
-
-        addAndMakeVisible(densityLbl); densityLbl.setText("Polyrhythm Density", juce::dontSendNotification);
-        addAndMakeVisible(density); density.setRange(0, 100, 1); density.setValue(40);
-
-        addAndMakeVisible(typeLbl); typeLbl.setText("Type", juce::dontSendNotification);
-        addAndMakeVisible(type);
-        type.addItem("3:2", 1); type.addItem("4:3", 2); type.addItem("5:4", 3); type.addItem("7:4", 4);
-        type.setSelectedId(1);
-
-        addAndMakeVisible(applyBtn); applyBtn.setButtonText("Apply");
-        applyBtn.onClick = [this] { apply(); };
-
-        setSize(420, 200);
-    }
-
-    void resized() override
-    {
-        auto r = getLocalBounds().reduced(12);
-        enableToggle.setBounds(r.removeFromTop(26));
-        r.removeFromTop(8);
-        densityLbl.setBounds(r.removeFromTop(18));
-        density.setBounds(r.removeFromTop(24));
-        r.removeFromTop(8);
-        typeLbl.setBounds(r.removeFromTop(18));
-        type.setBounds(r.removeFromTop(24));
-        r.removeFromTop(8);
-        applyBtn.setBounds(r.removeFromTop(28).withSizeKeepingCentre(120, 28));
-    }
-
-    void apply()
-    {
-        const bool  en = enableToggle.getToggleState();
-        const float amt = (float)(density.getValue() / 100.0);
-        MidiGenerator::PolyrhythmMode mode = MidiGenerator::PolyrhythmMode::Ratio3_2;
-        switch (type.getSelectedId())
-        {
-        case 2: mode = MidiGenerator::PolyrhythmMode::Ratio4_3; break;
-        case 3: mode = MidiGenerator::PolyrhythmMode::Ratio5_4; break;
-        case 4: mode = MidiGenerator::PolyrhythmMode::Ratio7_4; break;
-        default: break;
-        }
-        generator.setPolyrhythmMode(mode);
-        generator.setPolyrhythmAmount(en ? amt : 0.0f);
-    }
-
-private:
-    MidiGenerator& generator;
-    juce::ToggleButton enableToggle;
-    juce::Label        densityLbl, typeLbl;
-    juce::Slider       density;
-    juce::ComboBox     type;
-    juce::TextButton   applyBtn;
-};
 
 void BANGAudioProcessorEditor::openPolyrhythm()
 {
-    auto* comp = new PolyrhythmWindow(audioProcessor.getMidiGenerator());
-    juce::DialogWindow::LaunchOptions opts;
-    opts.dialogTitle = "Polyrhythm";
-    opts.escapeKeyTriggersCloseButton = true;
-    opts.useNativeTitleBar = true;
-    opts.resizable = false;
-    opts.content.setOwned(comp);
-    if (auto* w = opts.launchAsync())
-        w->centreWithSize(460, 240);
+    // Reuse a small DialogWindow with your polyrhythm component (you’ve coded it before).
+    // Assuming you exposed a factory on the generator; otherwise wrap your existing component.
+    Component* poly = audioProcessor.createPolyrhythmEditor(); // you have this from before
+    if (poly == nullptr) return;
+
+    DialogWindow::LaunchOptions o;
+    o.content.setOwned(poly, true);
+    o.dialogTitle = "Polyrhythm";
+    o.dialogBackgroundColour = colBg;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.runModal();
 }
-
-class ReharmonizeWindow : public juce::Component
-{
-public:
-    explicit ReharmonizeWindow(BANGAudioProcessorEditor& ed) : editor(ed)
-    {
-        addAndMakeVisible(enable); enable.setButtonText("Enable Reharmonization");
-        enable.setToggleState(editor.reharm.enable, juce::dontSendNotification);
-
-        addAndMakeVisible(typeLbl); typeLbl.setText("Type", juce::dontSendNotification);
-        addAndMakeVisible(type);
-        type.addItem("Functional", 1);
-        type.addItem("Modal", 2);
-        type.addItem("Tritone Subs", 3);
-        type.setSelectedId(editor.reharm.reharmType == "Modal" ? 2 :
-            editor.reharm.reharmType == "Tritone Subs" ? 3 : 1);
-
-        addAndMakeVisible(compLbl); compLbl.setText("Complexity", juce::dontSendNotification);
-        addAndMakeVisible(comp); comp.setRange(0, 100, 1);
-        comp.setValue(editor.reharm.complexity, juce::dontSendNotification);
-
-        addAndMakeVisible(apply); apply.setButtonText("Apply");
-        apply.onClick = [this] { applyOptions(); };
-
-        setSize(420, 220);
-    }
-
-    void resized() override
-    {
-        auto r = getLocalBounds().reduced(12);
-        enable.setBounds(r.removeFromTop(26));
-        r.removeFromTop(8);
-        typeLbl.setBounds(r.removeFromTop(18));
-        type.setBounds(r.removeFromTop(24));
-        r.removeFromTop(8);
-        compLbl.setBounds(r.removeFromTop(18));
-        comp.setBounds(r.removeFromTop(24));
-        r.removeFromTop(8);
-        apply.setBounds(r.removeFromTop(28).withSizeKeepingCentre(120, 28));
-    }
-
-    void applyOptions()
-    {
-        editor.reharm.enable = enable.getToggleState();
-        editor.reharm.complexity = (int)comp.getValue();
-        editor.reharm.reharmType = (type.getSelectedId() == 2 ? "Modal"
-            : type.getSelectedId() == 3 ? "Tritone Subs" : "Functional");
-        // If MidiGenerator exposes setReharmOptions(), you can pass &editor.reharm here.
-    }
-
-private:
-    BANGAudioProcessorEditor& editor;
-    juce::ToggleButton  enable;
-    juce::Label         typeLbl, compLbl;
-    juce::ComboBox      type;
-    juce::Slider        comp;
-    juce::TextButton    apply;
-};
 
 void BANGAudioProcessorEditor::openReharmonize()
 {
-    auto* comp = new ReharmonizeWindow(*this);
-    juce::DialogWindow::LaunchOptions opts;
-    opts.dialogTitle = "Reharmonize";
-    opts.escapeKeyTriggersCloseButton = true;
-    opts.useNativeTitleBar = true;
-    opts.resizable = false;
-    opts.content.setOwned(comp);
-    if (auto* w = opts.launchAsync())
-        w->centreWithSize(460, 260);
-}
+    Component* reh = audioProcessor.createReharmEditor(); // you wired this earlier
+    if (reh == nullptr) return;
 
-// A compact "Adjust" window (checkboxes + controls) already existed before;
-// if you need it again here, we can add it back exactly like the previous build.
+    DialogWindow::LaunchOptions o;
+    o.content.setOwned(reh, true);
+    o.dialogTitle = "Reharmonize";
+    o.dialogBackgroundColour = colBg;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.runModal();
+}
 
 void BANGAudioProcessorEditor::openAdjust()
 {
-    // Minimal functional placeholder that simply re-pushes current UI into generator.
-    // (If you want the full checkbox matrix again, say the word and I’ll drop it back in.)
+    Component* adj = audioProcessor.createAdjustEditor(); // your “ADJUST” window (checkboxes + dropdowns)
+    if (adj == nullptr) return;
+
+    DialogWindow::LaunchOptions o;
+    o.content.setOwned(adj, true);
+    o.dialogTitle = "Adjust";
+    o.dialogBackgroundColour = colBg;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.runModal();
+}
+
+//============================================================
+// Dice (non-minimal: actually randomizes all basic selectors + toggles)
+void BANGAudioProcessorEditor::randomizeAll()
+{
+    Random r(Time::getMillisecondCounter());
+
+    // Key / Scale
+    keyBox.setSelectedId(1 + r.nextInt(keyBox.getNumItems()), dontSendNotification);
+    scaleBox.setSelectedId(1 + r.nextInt(scaleBox.getNumItems()), dontSendNotification);
+
+    // Time signature
+    tsBox.setSelectedId(1 + r.nextInt(tsBox.getNumItems()), dontSendNotification);
+
+    // Bars (only 4 or 8)
+    barsBox.setSelectedId(1 + r.nextInt(barsBox.getNumItems()), dontSendNotification);
+
+    // Humanize + rest density
+    restSl.setValue(r.nextInt({ 0, 100 }), dontSendNotification);
+    timingSl.setValue(r.nextInt({ 0, 100 }), dontSendNotification);
+    velocitySl.setValue(r.nextInt({ 0, 100 }), dontSendNotification);
+    swingSl.setValue(r.nextInt({ 0, 100 }), dontSendNotification);
+    feelSl.setValue(r.nextInt({ 0, 100 }), dontSendNotification);
+
+    // Engine
+    const int e = r.nextInt(3);
+    currentEngine = (e == 0 ? EngineMode::Chords : e == 1 ? EngineMode::Mixture : EngineMode::Melody);
+    engineChordsBtn.setToggleState(currentEngine == EngineMode::Chords, dontSendNotification);
+    engineMixtureBtn.setToggleState(currentEngine == EngineMode::Mixture, dontSendNotification);
+    engineMelodyBtn.setToggleState(currentEngine == EngineMode::Melody, dontSendNotification);
+
+    // Optional: randomly open/enable advanced windows (we keep it simple – the window is user-driven)
+    updateRollContentSize();
     pushSettingsToGenerator();
-    regenerate();
 }

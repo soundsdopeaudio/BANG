@@ -36,10 +36,30 @@ public:
 
     // Component
     void paint(juce::Graphics&) override;
-    void resized() override {}
+    void resized() override;
+
+    struct Palette
+    {
+        juce::Colour background;
+        juce::Colour gridLine;
+        juce::Colour keyWhiteFill;
+        juce::Colour keyBlackFill;
+        juce::Colour barNumberStrip;
+        juce::Colour barNumberText;
+    };
+
+    void setPalette(const Palette& p) { palette = p; repaint(); }
+
+    void setDesiredSize(int w, int h) { desiredW = w; desiredH = h; resized(); }
+
+    void setTimeSignature(int num, int den);
+    void setBars(int bars);
+
 
 private:
     std::vector<Note> melody, overlay;
+
+    Palette palette;
 
     // time
     int bars = 8;
@@ -62,6 +82,8 @@ private:
     juce::Rectangle<int> gridArea() const;
     juce::Rectangle<int> keybedArea() const;
     juce::Rectangle<int> headerArea() const;
+
+    int desiredW = 1200, desiredH = 320;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PianoRollComponent)
 };

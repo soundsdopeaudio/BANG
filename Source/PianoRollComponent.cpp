@@ -18,6 +18,7 @@ void PianoRollComponent::setNotes(const std::vector<Note>& notesIn)
     melody = notesIn;
     repaint();
 }
+
 void PianoRollComponent::setOverlayNotes(const std::vector<Note>& notesIn)
 {
     overlay = notesIn;
@@ -70,9 +71,18 @@ float PianoRollComponent::widthForBeats(double beatsIn) const
     return (float)((beatsIn / totalBeats) * (double)ga.getWidth());
 }
 
+void PianoRollComponent::resized()
+{
+    // If you have internal children, layout them here.
+    // Then set our own size for the viewport:
+    setSize(juce::jmax(desiredW, getParentWidth()),
+        juce::jmax(desiredH, getParentHeight()));
+}
+
 void PianoRollComponent::paint(juce::Graphics& g)
 {
-    g.fillAll(colours.background);
+    g.fillAll(palette.background);
+    g.setColour(palette.gridLine);
 
     // header (bar numbers)
     {
