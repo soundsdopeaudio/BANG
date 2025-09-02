@@ -121,6 +121,9 @@ private:
     enum class EngineMode { Chords = 0, Mixture, Melody };
     EngineMode currentEngine = EngineMode::Mixture;
 
+    // Advanced harmony options, owned by the editor
+    AdvancedHarmonyOptions advancedHarmonyOptions;
+
     // utility
     static void styleCombo(juce::ComboBox& c, juce::Colour bg, juce::Colour txt);
     static void styleSlider(juce::Slider& s, juce::Colour track, juce::Colour thumb, juce::Colour txt);

@@ -47,7 +47,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
             });
         if (img.isValid())
         {
-            logoImg.setImage(logo);
+            logoImg.setImage(img);
             logoImg.setImagePlacement(juce::RectanglePlacement::centred);
             addAndMakeVisible(logoImg);
         }
@@ -151,7 +151,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
     {
         L->setJustificationType(Justification::centred);
         L->setColour(Label::textColourId, colText);
-        L->setFont(Font(Font::FontOptions(18.0f, Font::bold)));
+        L->setFont(Font(18.0f).withStyle(Font::bold));
         addAndMakeVisible(*L);
     }
 
@@ -163,7 +163,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
     // (Editor doesn’t need to duplicate formulas; it only selects one)
     const String scales[]{
         "Major","Natural Minor","Harmonic Minor","Dorian","Phrygian","Lydian","Mixolydian","Aeolian","Locrian",
-        "Locrian ♮6","Ionian #5","Dorian #4","Phrygian Dom","Lydian #2","Super Locrian","Dorian b2","Lydian Aug",
+        "Locrian nat 6","Ionian #5","Dorian #4","Phrygian Dom","Lydian #2","Super Locrian","Dorian b2","Lydian Aug",
         "Lydian Dom","Mixo b6","Locrian #2","Ethiopian Min","8 Tone Spanish","Phrygian ♮3","Blues","Hungarian Min",
         "Harmonic Maj","Pentatonic Maj","Pentatonic Min","Neopolitan Maj","Neopolitan Min","Spanish Gypsy",
         "Romanian Minor","Chromatic","Bebop Major","Bebop Minor"
@@ -207,7 +207,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
         lab.setText(text, dontSendNotification);
         lab.setJustificationType(Justification::centred);
         lab.setColour(Label::textColourId, colText);
-        lab.setFont(Font(Font::FontOptions(16.0f, Font::bold)));
+        lab.setFont(Font(16.0f).withStyle(Font::bold));
         addAndMakeVisible(lab);
     };
 
@@ -222,7 +222,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
     addAndMakeVisible(pianoViewport);
     pianoViewport.setViewedComponent(pianoRoll.get(), false);
     pianoViewport.setScrollBarsShown(true, true);
-    pianoViewport.setScrollOnDragEnabled(true);
+    pianoViewport.setScrollOnDragMode(juce::Viewport::ScrollOnDragMode::all);
 
     // apply palette to the roll (you added setPalette earlier)
     struct PRPal { juce::Colour rollBg, whiteKey, blackKey, grid; };
@@ -231,6 +231,8 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& proc)
         });
 
     updateRollContentSize();
+
+    audioProcessor.getMidiGenerator().setAdvancedHarmonyOptions(&advancedHarmonyOptions);
 }
 
 BANGAudioProcessorEditor::~BANGAudioProcessorEditor() = default;
@@ -403,8 +405,6 @@ void BANGAudioProcessorEditor::applyImageButton3(ImageButton& btn,
         over, 1.0f, juce::Colours::transparentBlack,
         down, 1.0f, juce::Colours::transparentBlack
     );
-        Image(), 1.0f, Colours::transparentBlack
-    );
     btn.setBounds(bounds);
     addAndMakeVisible(btn);
 }
@@ -481,7 +481,7 @@ void BANGAudioProcessorEditor::pushSettingsToGenerator()
     // engine
     const int engineMode = (currentEngine == EngineMode::Chords ? 0
         : currentEngine == EngineMode::Mixture ? 1 : 2);
-    g.setEngineMode(static_cast<MidiGenerator::EngineMode>(currentEngineIndex));;
+    g.setEngineMode(static_cast<MidiGenerator::EngineMode>(static_cast<int>(currentEngine)));
 
     // musical context
     g.setScaleIndex(scaleBox.getSelectedId() - 1); // 0-based for your scale list
@@ -534,60 +534,60 @@ void BANGAudioProcessorEditor::openAdvanced()
 {
     // Your AdvancedHarmonyWindow already exists.
     DialogWindow::LaunchOptions o;
-    o.content.setOwned(new AdvancedHarmonyWindow(audioProcessor.getMidiGenerator()), true);
+    o.content.setOwned(new AdvancedHarmonyWindow(advancedHarmonyOptions));
     o.dialogTitle = "Advanced Harmony";
     o.dialogBackgroundColour = colBg;
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;
     o.resizable = true;
-    o.runModal();
+    o.launchModal();
 }
 
 void BANGAudioProcessorEditor::openPolyrhythm()
 {
     // Reuse a small DialogWindow with your polyrhythm component (you’ve coded it before).
     // Assuming you exposed a factory on the generator; otherwise wrap your existing component.
-    Component* poly = audioProcessor.createPolyrhythmEditor(); // you have this from before
+    juce::Component* poly = audioProcessor.createPolyrhythmEditor(); // you have this from before
     if (poly == nullptr) return;
 
     DialogWindow::LaunchOptions o;
-    o.content.setOwned(poly, true);
+    o.content.setOwned(poly);
     o.dialogTitle = "Polyrhythm";
     o.dialogBackgroundColour = colBg;
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;
     o.resizable = true;
-    o.runModal();
+    o.launchModal();
 }
 
 void BANGAudioProcessorEditor::openReharmonize()
 {
-    Component* reh = audioProcessor.createReharmEditor(); // you wired this earlier
+    juce::Component* reh = audioProcessor.createReharmEditor(); // you wired this earlier
     if (reh == nullptr) return;
 
     DialogWindow::LaunchOptions o;
-    o.content.setOwned(reh, true);
+    o.content.setOwned(reh);
     o.dialogTitle = "Reharmonize";
     o.dialogBackgroundColour = colBg;
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;
     o.resizable = true;
-    o.runModal();
+    o.launchModal();
 }
 
 void BANGAudioProcessorEditor::openAdjust()
 {
-    Component* adj = audioProcessor.createAdjustEditor(); // your “ADJUST” window (checkboxes + dropdowns)
+    juce::Component* adj = audioProcessor.createAdjustEditor(); // your “ADJUST” window (checkboxes + dropdowns)
     if (adj == nullptr) return;
 
     DialogWindow::LaunchOptions o;
-    o.content.setOwned(adj, true);
+    o.content.setOwned(adj);
     o.dialogTitle = "Adjust";
     o.dialogBackgroundColour = colBg;
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;
     o.resizable = true;
-    o.runModal();
+    o.launchModal();
 }
 
 //============================================================

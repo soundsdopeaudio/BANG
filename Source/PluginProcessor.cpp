@@ -56,3 +56,18 @@ void BANGAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
     // Restore parameters here if needed
     juce::ignoreUnused(data, sizeInBytes);
 }
+
+juce::Component* BANGAudioProcessor::createPolyrhythmEditor()
+{
+    return nullptr;
+}
+
+juce::Component* BANGAudioProcessor::createReharmEditor()
+{
+    return nullptr;
+}
+
+juce::Component* BANGAudioProcessor::createAdjustEditor()
+{
+    return nullptr;
+}

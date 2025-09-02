@@ -38,6 +38,10 @@ public:
     MidiGenerator& getMidiGenerator()       noexcept { return generator; }
     const MidiGenerator& getMidiGenerator() const noexcept { return generator; }
 
+    juce::Component* createPolyrhythmEditor();
+    juce::Component* createReharmEditor();
+    juce::Component* createAdjustEditor();
+
 private:
     MidiGenerator generator;  // 👈 The actual generator instance
 
