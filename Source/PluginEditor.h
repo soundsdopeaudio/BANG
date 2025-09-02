@@ -77,6 +77,7 @@ private:
     void onEngineChanged();
     void pushSettingsToGenerator();
     void regenerate();
+    void randomizeAll();
     void performDragExport();
     juce::File writeTempMidiForDrag();
 

@@ -74,13 +74,13 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
 
     // ----- Logo -----
     addAndMakeVisible(logoImg);
-    if (auto ing = loadImageByHint("bang-newlogo"))
-        logoImg.setImage(img); // use placement separately
+    if (auto ing = loadImageByHint("bang-newlogo"); ing.isValid())
+        logoImg.setImage(ing); // use placement separately
     logoImg.setImagePlacement(juce::RectanglePlacement::centred);
 
     // ----- Engine title image -----
     addAndMakeVisible(engineTitleImg);
-    if (auto eimg = loadImageByHint("engine"))
+    if (auto eimg = loadImageByHint("engine"); eimg.isValid())
         engineTitleImg.setImage(eimg);
     engineTitleImg.setImagePlacement(juce::RectanglePlacement::centred);
 
@@ -221,7 +221,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     addAndMakeVisible(rollView);
     rollView.setViewedComponent(&pianoRoll, false);
     rollView.setScrollBarsShown(true, true);
-    rollView.setScrollOnDragEnabled(true); // (warning is fine)
+    rollView.setScrollOnDragMode(juce::Viewport::ScrollOnDragMode::all); // (warning is fine)
 
     // Piano palette (your colors)
     {
@@ -456,6 +456,24 @@ void BANGAudioProcessorEditor::regenerate()
     pianoRoll.repaint();
 }
 
+void BANGAudioProcessorEditor::randomizeAll()
+{
+    // Randomize Key
+    keyBox.setSelectedItemIndex(juce::Random::getSystemRandom().nextInt(keyBox.getNumItems()));
+
+    // Randomize Scale
+    scaleBox.setSelectedItemIndex(juce::Random::getSystemRandom().nextInt(scaleBox.getNumItems()));
+
+    // Randomize Humanize Sliders
+    timingSl.setValue(juce::Random::getSystemRandom().nextDouble() * 100.0);
+    velocitySl.setValue(juce::Random::getSystemRandom().nextDouble() * 100.0);
+    swingSl.setValue(juce::Random::getSystemRandom().nextDouble() * 100.0);
+    feelSl.setValue(juce::Random::getSystemRandom().nextDouble() * 100.0);
+    restSl.setValue(juce::Random::getSystemRandom().nextDouble() * 100.0);
+
+    pushSettingsToGenerator();
+}
+
 // ======== Drag export ========
 
 juce::File BANGAudioProcessorEditor::writeTempMidiForDrag()
@@ -618,10 +636,16 @@ void BANGAudioProcessorEditor::openAdjust()
             addAndMakeVisible(timing); addAndMakeVisible(velocity); addAndMakeVisible(swing); addAndMakeVisible(feel);
 
             // mirror choices from editor
-            keySel.copyAllItemsFrom(editor.keyBox);
-            scaleSel.copyAllItemsFrom(editor.scaleBox);
-            tsSel.copyAllItemsFrom(editor.tsBox);
-            barsSel.copyAllItemsFrom(editor.barsBox);
+            auto copyComboBoxItems = [](juce::ComboBox& dest, const juce::ComboBox& src)
+            {
+                for (int i = 0; i < src.getNumItems(); ++i)
+                    dest.addItem(src.getItemText(i), src.getItemId(i));
+            };
+
+            copyComboBoxItems(keySel, editor.keyBox);
+            copyComboBoxItems(scaleSel, editor.scaleBox);
+            copyComboBoxItems(tsSel, editor.tsBox);
+            copyComboBoxItems(barsSel, editor.barsBox);
 
             restSlider.setRange(0.0, 100.0, 1.0);
             timing.setRange(0.0, 100.0, 1.0);
