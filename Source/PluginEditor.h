@@ -1,92 +1,61 @@
 ﻿#pragma once
 
 #include <JuceHeader.h>
+#include "PluginProcessor.h"
+#include "PianoRollComponent.h"
+#include "MidiGenerator.h"
+#include "AdvancedHarmonyWindow.h"
+#include "BinaryData.h"
 
-class MidiGenerator;                 // in PluginProcessor / MidiGenerator
-class BANGAudioProcessor;            // your processor
-class PianoRollComponent;            // your piano roll component
-class AdvancedHarmonyWindow;         // your existing window class
+// === Small helpers implemented in PluginEditor.cpp ===
+juce::Image loadImageByHint(const juce::String& hint);            // fuzzy lookup in BinaryData
+void setImageButton3(juce::ImageButton& b, const juce::String& baseHint); // normal/hover/down
 
-//================================================================================
-class BANGAudioProcessorEditor
-    : public juce::AudioProcessorEditor,
-    public juce::ComboBox::Listener,
-    public juce::Slider::Listener
+class BANGAudioProcessorEditor : public juce::AudioProcessorEditor,
+    public juce::DragAndDropContainer,
+    private juce::ComboBox::Listener,
+    private juce::Slider::Listener
 {
 public:
-    explicit BANGAudioProcessorEditor(BANGAudioProcessor& proc);
-    ~BANGAudioProcessorEditor() override;
+    explicit BANGAudioProcessorEditor(BANGAudioProcessor&);
+    ~BANGAudioProcessorEditor() override = default;
 
-    // juce::Component
-    void paint(juce::Graphics& g) override;
+    void paint(juce::Graphics&) override;
     void resized() override;
 
-    // listeners (used only for selectors & sliders – buttons use lambdas)
-    void comboBoxChanged(juce::ComboBox* box) override;
-    void sliderValueChanged(juce::Slider* s) override;
+    // for drag-out
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
 
 private:
-    // ---------- helpers ----------
-    // load an Image from BinaryData by trying several possible names (case/variant tolerant)
-    juce::Image loadImageAny(std::initializer_list<const char*> tryNames) const;
-
-    // set a 3-state image button (normal / hover / down)
-    void applyImageButton3(juce::ImageButton& btn,
-        std::initializer_list<const char*> normalNames,
-        std::initializer_list<const char*> overNames,
-        std::initializer_list<const char*> downNames,
-        juce::Rectangle<int> bounds);
-
-    // make a Drawable from an Image (used for the engine radio images, if needed)
-    static std::unique_ptr<juce::Drawable> makeDrawable(const juce::Image& img);
-
-    // UI wiring
-    void pushSettingsToGenerator();     // send current UI -> MidiGenerator
-    void regenerate();                  // call generator and refresh roll
-    void performDragExport();           // write temp MIDI & start external drag
-
-    // layout helpers
-    int currentBars() const;            // read bars from barsBox (only 4 or 8)
-    int currentTSNumerator() const;     // parse “n/d”
-    int currentTSDenominator() const;   // parse “n/d”
-    void updateRollContentSize();       // set pianoRoll content size to match bars/TS
-
-    // open sub-windows
-    void openAdvanced();
-    void openPolyrhythm();
-    void openReharmonize();
-    void openAdjust();
-
-    // randomize all selectors + maybe advanced toggles, then regenerate
-    void randomizeAll();
-
-    // key helpers
-    static int rootBoxToSemitone(const juce::ComboBox& keyBox);
-
-    // ---------- members ----------
+    // ===================== model / processor =====================
     BANGAudioProcessor& audioProcessor;
 
-    // palette / colors (your spec)
-    const juce::Colour colBg         { 0xFFA5DD00 }; // plugin background
-    const juce::Colour colWhiteKey   { 0xFFF2AE01 };
-    const juce::Colour colBlackKey   { juce::Colours::black };
-    const juce::Colour colRollBg     { 0xFF13220C };
-    const juce::Colour colRollGrid   { 0xFF314025 };
-    const juce::Colour colAccent     { 0xFFDD4F02 }; // sliders
-    const juce::Colour colAccent2    { 0xFFD44C02 }; // alias if needed
-    const juce::Colour colDropBg     { 0xFFF9BF00 }; // combobox bg
-    const juce::Colour colText       { juce::Colours::black };
+    // ===================== left selectors ========================
+    juce::Label   keyLbl, scaleLbl, tsLbl, barsLbl, restLbl;
+    juce::ComboBox keyBox, scaleBox, tsBox, barsBox;
+    juce::Slider   restSl; // 0..100% rest density
 
-    // logo + title images
-    juce::ImageComponent logoImg;
+    // ===================== right humanize ========================
+    juce::Label  humanizeTitle;
+    juce::Label  timingLbl, velocityLbl, swingLbl, feelLbl; // headings
+    juce::Slider timingSl, velocitySl, swingSl, feelSl;  // 0..100
+
+    // ===================== center piano roll =====================
+    juce::Viewport      rollView;
+    PianoRollComponent  pianoRoll;
+
+    // ===================== images / logo =========================
+    juce::ImageComponent logoImg;       // plugin logo
     juce::ImageComponent engineTitleImg;
 
-    // ENGINE buttons (image buttons – one selected at all times)
+    // ===================== engine buttons ========================
     juce::ImageButton engineChordsBtn;
     juce::ImageButton engineMixtureBtn;
     juce::ImageButton engineMelodyBtn;
+    int currentEngineIndex = 1; // 0=chords, 1=mixture (default), 2=melody
 
-    // action buttons
+    // ===================== action buttons ========================
     juce::ImageButton generateBtn;
     juce::ImageButton dragBtn;
     juce::ImageButton advancedBtn;
@@ -95,35 +64,35 @@ private:
     juce::ImageButton adjustBtn;
     juce::ImageButton diceBtn;
 
-    // selectors
-    juce::ComboBox keyBox, scaleBox, tsBox, barsBox;
+    // ===================== editor state ==========================
+    enum class EngineSel { Chords, Mixture, Melody };
+    EngineSel engineSel{ EngineSel::Mixture };
 
-    // labels
-    juce::Label keyLbl, scaleLbl, tsLbl, barsLbl, restLbl;
-    juce::Label timingLbl, velocityLbl, swingLbl, feelLbl;
+    AdvancedHarmonyOptions advOptions;      // passed into generator
 
-    // sliders
-    juce::Slider restSl;     // 0..100
-    juce::Slider timingSl;   // 0..100
-    juce::Slider velocitySl; // 0..100
-    juce::Slider swingSl;    // 0..100
-    juce::Slider feelSl;     // 0..100
+    std::vector<Note> lastMelody;
+    std::vector<Note> lastChords;
 
-    // piano roll & scrolling
-    juce::Viewport pianoViewport;
-    std::unique_ptr<PianoRollComponent> pianoRoll;
+    // ===================== internal helpers ======================
+    void onEngineChanged();
+    void pushSettingsToGenerator();
+    void regenerate();
+    void performDragExport();
+    juce::File writeTempMidiForDrag();
 
-    // tiny hidden DragAndDropContainer to initiate external file drags
-    struct DnDHelper : public juce::Component, public juce::DragAndDropContainer {};
-    std::unique_ptr<DnDHelper> dndHelper;
+    // popups (kept lightweight but functional)
+    void openAdvanced();
+    void openPolyrhythm();
+    void openReharmonize();
+    void openAdjust();
 
-    // engine state (mirrors MidiGenerator::EngineMode)
-    enum class EngineMode { Chords = 0, Mixture, Melody };
-    EngineMode currentEngine = EngineMode::Mixture;
+    // UI utils
+    void comboBoxChanged(juce::ComboBox* box) override;
+    void sliderValueChanged(juce::Slider* s) override;
 
-    // utility
-    static void styleCombo(juce::ComboBox& c, juce::Colour bg, juce::Colour txt);
-    static void styleSlider(juce::Slider& s, juce::Colour track, juce::Colour thumb, juce::Colour txt);
+    int  currentBars() const;
+    int  currentTSNumerator() const;
+    void updateRollContentSize();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BANGAudioProcessorEditor)
 };

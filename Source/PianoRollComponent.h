@@ -36,7 +36,6 @@ public:
 
     // Component
     void paint(juce::Graphics&) override;
-    void resized() override;
 
     struct Palette
     {
@@ -84,6 +83,8 @@ private:
     juce::Rectangle<int> headerArea() const;
 
     int desiredW = 1200, desiredH = 320;
+
+    void resized() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PianoRollComponent)
 };
