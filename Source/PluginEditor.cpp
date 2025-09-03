@@ -1,47 +1,76 @@
-﻿#include "PluginEditor.h"
-#include "BinaryData.h"
+#include "PluginEditor.h"
+// #include "BinaryData.h" // No longer needed, loading from filesystem.
 
 
-// ===== image loading helper that tries multiple BinaryData names =====
+// Helper to find the 'Resources' directory.
+// It checks relative to the plugin binary and the current working directory.
+static juce::File getResourceFile(const juce::String& resourceName)
+{
+    // This is a common pattern for JUCE plugins.
+    // On macOS, the bundle is a directory, so we go up a few levels.
+    auto resourcesDir = juce::File::getSpecialLocation(juce::File::currentApplicationFile)
+                                .getParentDirectory();
+
+#if JUCE_MAC
+    resourcesDir = resourcesDir.getParentDirectory().getParentDirectory().getChildFile("Resources");
+#else
+    resourcesDir = resourcesDir.getChildFile("Resources");
+#endif
+
+
+    // Fallback for development: check relative to current working directory
+    if (!resourcesDir.isDirectory())
+    {
+        resourcesDir = juce::File::getCurrentWorkingDirectory().getChildFile("Resources");
+    }
+
+    return resourcesDir.getChildFile(resourceName);
+}
+
+
+// ===== image loading helper that tries multiple filenames =====
 static juce::Image loadImageAny(std::initializer_list<const char*> names)
 {
-    for (auto* nm : names)
+    for (auto* name : names)
     {
-        if (nm == nullptr) continue;
-        int dataSize = 0;
-        const void* data = BinaryData::getNamedResource(nm, dataSize);
-        if (data != nullptr && dataSize > 0)
+        if (name == nullptr || *name == '\0') continue;
+
+        auto imageFile = getResourceFile(name);
+        if (imageFile.existsAsFile())
         {
-            juce::MemoryInputStream mis(data, (size_t)dataSize, false);
-            if (auto img = juce::ImageFileFormat::loadFrom(mis); img.isValid())
+            if (auto img = juce::ImageFileFormat::loadFrom(imageFile); img.isValid())
+            {
+                DBG("Loaded image: " << name << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
                 return img;
+            }
         }
     }
-    return {}; // empty image
+    return juce::Image();
 }
 
 // Overload so you can pass std::vector<const char*> too
 static juce::Image loadImageAny(const std::vector<const char*>& names)
 {
-    for (auto* nm : names)
+    for (auto* name : names)
     {
-        if (nm == nullptr) continue;
-        int dataSize = 0;
-        const void* data = BinaryData::getNamedResource(nm, dataSize);
-        if (data != nullptr && dataSize > 0)
+        if (name == nullptr || *name == '\0') continue;
+
+        auto imageFile = getResourceFile(name);
+        if (imageFile.existsAsFile())
         {
-            juce::MemoryInputStream mis(data, (size_t)dataSize, false);
-            if (auto img = juce::ImageFileFormat::loadFrom(mis); img.isValid())
+            if (auto img = juce::ImageFileFormat::loadFrom(imageFile); img.isValid())
+            {
+                DBG("Loaded image: " << name << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
                 return img;
+            }
         }
     }
-    return {};
+    return juce::Image();
 }
 
+
 // ===== set exactly 3 images on an ImageButton (normal/over/down) =====
-// Some JUCE versions need the "overlay colour" argument after each opacity.
-// If you pass 11 args, you’ll get the exact error you saw. This wrapper
-// calls the signature your headers expect.
+// This wrapper calls the correct JUCE signature for setImages.
 static void setImageButton3(juce::ImageButton& b,
     const juce::Image& normal,
     const juce::Image& over,
@@ -57,28 +86,6 @@ static void setImageButton3(juce::ImageButton& b,
     );
 }
 
-
-// --- helper for 3-state image buttons (up/over/down) ---
-static juce::Image loadImageAny(const std::initializer_list<const char*>& names)
-{
-    for (auto* name : names)
-    {
-        if (name == nullptr || *name == '\0') continue;
-
-        int dataSize = 0;
-        const void* ptr = BinaryData::getNamedResource(name, dataSize);
-        if (ptr != nullptr && dataSize > 0)
-        {
-            auto img = juce::ImageFileFormat::loadFrom(ptr, (size_t)dataSize);
-            if (img.isValid())
-            {
-                DBG("Loaded image: " << name << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
-                return img;
-            }
-        }
-    }
-    return juce::Image();
-}
 
 // Set images for a juce::ImageButton with all hover/down variants if available.
 // Usage: setImageButton3(generateBtn, {"GenerateBtn", "GenerateBtn_normal.png"});
@@ -169,31 +176,40 @@ static void setImageButton3(juce::ImageButton& btn,
     if (!down.isValid()) down = normal;
 }
 
-// ======== BinaryData image helpers ========
+// ======== Filesystem image helpers ========
 
-// fuzzy lookup: tries <hint>.png, <hint>_hover.png, etc. and also partial matches in BinaryData.
+// fuzzy lookup: tries <hint>.png, <hint>_hover.png, etc. by scanning the Resources directory.
 static juce::Image loadBinaryImage(const juce::String& nameLike)
 {
+    auto resourcesDir = getResourceFile("").getParent(); // Get the Resources dir itself
+
+    if (!resourcesDir.isDirectory())
+    {
+        // Can't find resources, return empty image.
+        // A jassertfalse would be good for debugging builds.
+        // jassertfalse;
+        return {};
+    }
+
     // Try exact common suffixes first
     const char* suffixes[] = { ".png", ".jpg", ".jpeg" };
     for (auto* s : suffixes)
     {
-        auto nm = (nameLike + s);
-        int dataSize = 0;
-        if (const auto* data = BinaryData::getNamedResource(nm.toRawUTF8(), dataSize))
-            return juce::ImageFileFormat::loadFrom(data, (size_t)dataSize);
+        auto file = resourcesDir.getChildFile(nameLike + s);
+        if (file.existsAsFile())
+            if (auto img = juce::ImageFileFormat::loadFrom(file); img.isValid())
+                return img;
     }
 
-    // Fallback: scan the resource list for any match that contains the hint
-    for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
+    // Fallback: scan the directory for any match that contains the hint
+    juce::Array<juce::File> files;
+    resourcesDir.findChildFiles(files, juce::File::findFiles, false, "*.png;*.jpg;*.jpeg");
+
+    for (const auto& file : files)
     {
-        juce::String nm(BinaryData::namedResourceList[i]);
-        if (nm.containsIgnoreCase(nameLike) && (nm.endsWithIgnoreCase(".png") || nm.endsWithIgnoreCase(".jpg") || nm.endsWithIgnoreCase(".jpeg")))
-        {
-            int dataSize = 0;
-            if (const auto* data = BinaryData::getNamedResource(nm.toRawUTF8(), dataSize))
-                return juce::ImageFileFormat::loadFrom(data, (size_t)dataSize);
-        }
+        if (file.getFileName().containsIgnoreCase(nameLike))
+            if (auto img = juce::ImageFileFormat::loadFrom(file); img.isValid())
+                return img;
     }
 
     return {};
