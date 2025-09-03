@@ -174,6 +174,8 @@ static void setImageButton3(juce::ImageButton& btn,
     }
     if (!over.isValid()) over = normal;
     if (!down.isValid()) down = normal;
+
+    setImageButton3(btn, normal, over, down);
 }
 
 // ======== Filesystem image helpers ========
@@ -181,7 +183,7 @@ static void setImageButton3(juce::ImageButton& btn,
 // fuzzy lookup: tries <hint>.png, <hint>_hover.png, etc. by scanning the Resources directory.
 static juce::Image loadBinaryImage(const juce::String& nameLike)
 {
-    auto resourcesDir = getResourceFile("").getParent(); // Get the Resources dir itself
+    auto resourcesDir = getResourceFile("").getParentDirectory(); // Get the Resources dir itself
 
     if (!resourcesDir.isDirectory())
     {
