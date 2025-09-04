@@ -27,42 +27,16 @@ static juce::File getResourceFile(const juce::String& resourceName)
     return resourcesDir.getChildFile(resourceName);
 }
 
-
-// ===== image loading helper that tries multiple filenames =====
-static juce::Image loadImageAny(std::initializer_list<const char*> names)
+// Load an image from the Resources directory.
+static juce::Image loadImage(const juce::String& imageName)
 {
-    for (auto* name : names)
+    auto imageFile = getResourceFile(imageName);
+    if (imageFile.existsAsFile())
     {
-        if (name == nullptr || *name == '\0') continue;
-
-        auto imageFile = getResourceFile(name);
-        if (imageFile.existsAsFile())
+        if (auto img = juce::ImageFileFormat::loadFrom(imageFile); img.isValid())
         {
-            if (auto img = juce::ImageFileFormat::loadFrom(imageFile); img.isValid())
-            {
-                DBG("Loaded image: " << name << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
-                return img;
-            }
-        }
-    }
-    return juce::Image();
-}
-
-// Overload so you can pass std::vector<const char*> too
-static juce::Image loadImageAny(const std::vector<const char*>& names)
-{
-    for (auto* name : names)
-    {
-        if (name == nullptr || *name == '\0') continue;
-
-        auto imageFile = getResourceFile(name);
-        if (imageFile.existsAsFile())
-        {
-            if (auto img = juce::ImageFileFormat::loadFrom(imageFile); img.isValid())
-            {
-                DBG("Loaded image: " << name << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
-                return img;
-            }
+            DBG("Loaded image: " << imageName << "  (" << img.getWidth() << "x" << img.getHeight() << ")");
+            return img;
         }
     }
     return juce::Image();
@@ -77,144 +51,19 @@ static void setImageButton3(juce::ImageButton& b,
     const juce::Image& down)
 {
     b.setImages(
-        /*resizeNow*/ true,
+        /*resizeNow*/ false, // Set to false to use original image size
         /*preserveProportions*/ true,
         /*doToggle*/ false,
         /*normal*/ normal, 1.0f, juce::Colours::transparentBlack,
         /*over  */ over, 1.0f, juce::Colours::transparentBlack,
         /*down  */ down, 1.0f, juce::Colours::transparentBlack
     );
-}
 
-
-// Set images for a juce::ImageButton with all hover/down variants if available.
-// Usage: setImageButton3(generateBtn, {"GenerateBtn", "GenerateBtn_normal.png"});
-static void setImageButton3(juce::ImageButton& btn,
-    std::initializer_list<const char*> baseNameCandidates)
-{
-    // Build the candidate lists for normal/over/down using all basenames you pass in.
-    std::vector<const char*> normalList, overList, downList;
-
-    auto pushAll = [](std::vector<const char*>& dst, const char* base)
+    // Set the button size to the normal image's size
+    if (normal.isValid())
     {
-        // exact filename as-is
-        dst.push_back(base);
-        // common patterns
-        // base.png
-        {
-            static thread_local std::string s;
-            s = base; s += ".png";              dst.push_back(s.c_str());
-        }
-        // base_normal.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_normal.png";       dst.push_back(s.c_str());
-        }
-        // base_over.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_over.png";         dst.push_back(s.c_str());
-        }
-        // base_hover.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_hover.png";        dst.push_back(s.c_str());
-        }
-        // base_down.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_down.png";         dst.push_back(s.c_str());
-        }
-        // base_pressed.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_pressed.png";      dst.push_back(s.c_str());
-        }
-        // base_on.png (some sets use “on/off”)
-        {
-            static thread_local std::string s;
-            s = base; s += "_on.png";           dst.push_back(s.c_str());
-        }
-        // base_off.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_off.png";          dst.push_back(s.c_str());
-        }
-    };
-
-    // For each candidate base name you pass, add all plausible variants.
-    for (auto* base : baseNameCandidates)
-    {
-        pushAll(normalList, base);
-        pushAll(overList, base);
-        pushAll(downList, base);
+        b.setSize(normal.getWidth(), normal.getHeight());
     }
-
-    // Try to load an actual image for each state.
-    auto normal = loadImageAny(normalList);
-    auto over = loadImageAny(overList);
-    auto down = loadImageAny(downList);
-
-    // Fallbacks so the button is at least visible if only one image exists.
-    if (!normal.isValid() && over.isValid())  normal = over;
-    if (!normal.isValid() && down.isValid())  normal = down;
-    if (!over.isValid())                      over = normal;
-    if (!down.isValid())                      down = normal;
-
-    // If still nothing, fill a visible placeholder so you SEE the button area.
-    if (!normal.isValid())
-    {
-        normal = juce::Image(juce::Image::ARGB, 160, 48, true);
-        juce::Graphics g(normal);
-        g.fillAll(juce::Colours::darkred);
-        g.setColour(juce::Colours::black);
-        g.drawRect(normal.getBounds(), 2);
-        g.setColour(juce::Colours::white);
-        g.drawText("MISSING IMG", normal.getBounds(), juce::Justification::centred);
-    }
-    if (!over.isValid()) over = normal;
-    if (!down.isValid()) down = normal;
-
-    setImageButton3(btn, normal, over, down);
-}
-
-// ======== Filesystem image helpers ========
-
-// fuzzy lookup: tries <hint>.png, <hint>_hover.png, etc. by scanning the Resources directory.
-static juce::Image loadBinaryImage(const juce::String& nameLike)
-{
-    auto resourcesDir = getResourceFile("").getParentDirectory(); // Get the Resources dir itself
-
-    if (!resourcesDir.isDirectory())
-    {
-        // Can't find resources, return empty image.
-        // A jassertfalse would be good for debugging builds.
-        // jassertfalse;
-        return {};
-    }
-
-    // Try exact common suffixes first
-    const char* suffixes[] = { ".png", ".jpg", ".jpeg" };
-    for (auto* s : suffixes)
-    {
-        auto file = resourcesDir.getChildFile(nameLike + s);
-        if (file.existsAsFile())
-            if (auto img = juce::ImageFileFormat::loadFrom(file); img.isValid())
-                return img;
-    }
-
-    // Fallback: scan the directory for any match that contains the hint
-    juce::Array<juce::File> files;
-    resourcesDir.findChildFiles(files, juce::File::findFiles, false, "*.png;*.jpg;*.jpeg");
-
-    for (const auto& file : files)
-    {
-        if (file.getFileName().containsIgnoreCase(nameLike))
-            if (auto img = juce::ImageFileFormat::loadFrom(file); img.isValid())
-                return img;
-    }
-
-    return {};
 }
 
 // ======== Editor ========
@@ -348,9 +197,12 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     styleHumanSlider(feelSl);     feelSl.setValue(30.0); addAndMakeVisible(feelSl);     feelSl.addListener(this);
 
     // ----- Engine buttons (image buttons with 3 states) -----
-    addAndMakeVisible(engineChordsBtn);   setImageButton3(engineChordsBtn, "chords");
-    addAndMakeVisible(engineMixtureBtn);  setImageButton3(engineMixtureBtn, "mixture");
-    addAndMakeVisible(engineMelodyBtn);   setImageButton3(engineMelodyBtn, "melody");
+    addAndMakeVisible(engineChordsBtn);
+    addAndMakeVisible(engineMixtureBtn);
+    addAndMakeVisible(engineMelodyBtn);
+    setImageButton3(engineChordsBtn, "enginechords");
+    setImageButton3(engineMixtureBtn, "enginemixture");
+    setImageButton3(engineMelodyBtn, "enginemelody");
 
     for (auto* b : { &engineChordsBtn, &engineMixtureBtn, &engineMelodyBtn })
     {
@@ -366,12 +218,12 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
 
     // ----- Main action buttons -----
     addAndMakeVisible(generateBtn); setImageButton3(generateBtn, "generate");
-    addAndMakeVisible(dragBtn);     setImageButton3(dragBtn, "drag");
+    addAndMakeVisible(dragBtn);     setImageButton3(dragBtn, "dragBtn");
     addAndMakeVisible(advancedBtn); setImageButton3(advancedBtn, "advanced");
     addAndMakeVisible(polyrBtn);    setImageButton3(polyrBtn, "polyr");
     addAndMakeVisible(reharmBtn);   setImageButton3(reharmBtn, "reharm");
     addAndMakeVisible(adjustBtn);   setImageButton3(adjustBtn, "adjust");
-    addAndMakeVisible(diceBtn);     setImageButton3(diceBtn, "dice");
+    addAndMakeVisible(diceBtn);     setImageButton3(diceBtn, "diceBtn");
 
     generateBtn.onClick = [this] { regenerate(); };
     dragBtn.onClick = [this] { performDragExport(); };
@@ -391,31 +243,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     rollView.setScrollOnDragEnabled(true);
 #endif
 
-    engineChordsBtn.toFront(true);
-    engineMixtureBtn.toFront(true);
-    engineMelodyBtn.toFront(true);
-
-    generateBtn.toFront(true);
-    dragBtn.toFront(true);
-    polyrBtn.toFront(true);
-    reharmBtn.toFront(true);
-    adjustBtn.toFront(true);
-    diceBtn.toFront(true);
-
     pianoRoll.toBack(); // roll under the buttons just in case
-
-    // Example: pass *your* base names. The helper will try base.png, base_normal.png, base_over.png, base_down.png, etc.
-    setImageButton3(engineChordsBtn, { "enginechords", "chordsBtn", "ChordsBtn", "chords" });
-    setImageButton3(engineMixtureBtn, { "enginemixture", "mixtureBtn", "MixtureBtn", "mixture" });
-    setImageButton3(engineMelodyBtn, { "enginemelody", "melodyBtn", "MelodyBtn", "melody" });
-
-    setImageButton3(advancedBtn, { "AdvancedHarmonyBtn", "advancedBtn", "ADVANCED_HARMONY" });
-    setImageButton3(polyrBtn, { "PolyrhythmBtn",     "polyrBtn",     "POLYRHYTHM" });
-    setImageButton3(reharmBtn, { "reharmBtn",    "reharmBtn",    "REHARMONIZE" });
-    setImageButton3(adjustBtn, { "adjustBtn",         "AdjustBtn",    "ADJUST" });
-    setImageButton3(generateBtn, { "generateBtn",       "generateBtn",  "GENERATE" });
-    setImageButton3(dragBtn, { "dragBtn",           "dragBtn",      "DRAG" });
-    setImageButton3(diceBtn, { "DiceBtn",           "diceBtn",      "DICE" });
 
     // Piano palette (your colors)
     {
@@ -436,19 +264,33 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
 
 juce::Image loadImageByHint(const juce::String& hint)
 {
-    return loadBinaryImage(hint);
+    return loadImage(hint + ".png");
 }
 
-void setImageButton3(juce::ImageButton& b, const juce::String& baseHint)
+void setImageButton3(juce::ImageButton& b, const juce::String& baseName)
 {
-    const auto normal = loadImageByHint(baseHint);
-    auto hover = loadImageByHint(baseHint + "_hover");
-    auto down = loadImageByHint(baseHint + "_down");
+    auto normal = loadImage(baseName + ".png");
+    auto hover = loadImage(baseName + "_hover.png");
+    auto down = loadImage(baseName + "_down.png");
 
+    // Fallbacks for missing images
     if (!hover.isValid()) hover = normal;
     if (!down.isValid())  down = normal;
 
-    // now call the static helper
+    // If still nothing, fill a visible placeholder so you SEE the button area.
+    if (!normal.isValid())
+    {
+        normal = juce::Image(juce::Image::ARGB, 160, 48, true);
+        juce::Graphics g(normal);
+        g.fillAll(juce::Colours::darkred);
+        g.setColour(juce::Colours::black);
+        g.drawRect(normal.getBounds(), 2);
+        g.setColour(juce::Colours::white);
+        g.drawText("MISSING: " + baseName, normal.getBounds(), juce::Justification::centred);
+        if(!hover.isValid()) hover = normal;
+        if(!down.isValid()) down = normal;
+    }
+
     setImageButton3(b, normal, hover, down);
 }
 
@@ -486,8 +328,7 @@ void BANGAudioProcessorEditor::resized()
     restSl.setBounds(row.reduced(4));
 
     // Adjust button aligned with Rest row (never under the roll)
-    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(160));
-    adjustBtn.toFront(false);
+    adjustBtn.setTopLeftPosition(left.getX(), left.getY());
 
     // ---- RIGHT column (Humanize title + 4 sliders) ----
     auto right = columns;
@@ -498,30 +339,31 @@ void BANGAudioProcessorEditor::resized()
     slRow = right.removeFromTop(40);      feelLbl.setBounds(slRow.removeFromLeft(120));     feelSl.setBounds(slRow.reduced(4));
 
     // Dice button at the top-right
-    diceBtn.setBounds(right.removeFromTop(36).removeFromRight(40));
-    diceBtn.toFront(false);
+    diceBtn.setTopRightPosition(right.getRight(), right.getY());
 
     // ---- Small middle buttons (Advanced / Polyrhythm / Reharmonize) ----
     auto midRow = r.removeFromTop(52);
-    const int smW = 160, smH = 44, smGap = 18;
-    juce::Rectangle<int> smallRow(0, 0, smW * 3 + smGap * 2, smH);
-    smallRow = smallRow.withCentre(midRow.getCentre());
-    advancedBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    polyrBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    reharmBtn.setBounds(smallRow.removeFromLeft(smW));
+    const int smGap = 18;
+    int totalWidth = advancedBtn.getWidth() + polyrBtn.getWidth() + reharmBtn.getWidth() + 2 * smGap;
+    juce::Rectangle<int> smallRow(0, 0, totalWidth, midRow.getHeight());
+    smallRow.setCentre(midRow.getCentreX(), midRow.getCentreY());
+
+    advancedBtn.setTopLeftPosition(smallRow.getX(), smallRow.getCentreY() - advancedBtn.getHeight() / 2);
+    polyrBtn.setTopLeftPosition(advancedBtn.getRight() + smGap, smallRow.getCentreY() - polyrBtn.getHeight() / 2);
+    reharmBtn.setTopLeftPosition(polyrBtn.getRight() + smGap, smallRow.getCentreY() - reharmBtn.getHeight() / 2);
+
 
     // ---- Engine selector row (3 image buttons under the “engine” title image) ----
     auto engineRow = r.removeFromTop(60);
-    const int eW = 56, eH = 46, eGap = 16;
-    juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
-    engineBar = engineBar.withCentre(engineRow.getCentre());
-    engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMelodyBtn.setBounds(engineBar.removeFromLeft(eW));
+    const int eGap = 16;
+    int engineTotalWidth = engineChordsBtn.getWidth() + engineMixtureBtn.getWidth() + engineMelodyBtn.getWidth() + 2 * eGap;
+    juce::Rectangle<int> engineBar(0, 0, engineTotalWidth, engineRow.getHeight());
+    engineBar.setCentre(engineRow.getCentreX(), engineRow.getCentreY());
+
+    engineChordsBtn.setTopLeftPosition(engineBar.getX(), engineBar.getCentreY() - engineChordsBtn.getHeight() / 2);
+    engineMixtureBtn.setTopLeftPosition(engineChordsBtn.getRight() + eGap, engineBar.getCentreY() - engineMixtureBtn.getHeight() / 2);
+    engineMelodyBtn.setTopLeftPosition(engineMixtureBtn.getRight() + eGap, engineBar.getCentreY() - engineMelodyBtn.getHeight() / 2);
+
 
     // ---- Piano roll (header height ≈ 28) ----
     const int headerH = 28;
@@ -531,24 +373,23 @@ void BANGAudioProcessorEditor::resized()
     // Viewport area for the roll; give the rest of the space except bottom buttons
     auto spaceForRoll = r.removeFromBottom(r.getHeight() - 100);
     rollView.setBounds(spaceForRoll);
-    rollView.toBack();
 
     // Update roll content width to match bars × beats (you already have these helpers)
-    updateRollContentSize();   // keeps the content wider than the viewport as needed :contentReference[oaicite:1]{index=1}
+    updateRollContentSize();
 
     // ---- Bottom big buttons ----
-    const int bigW = 300, bigH = 72;
     auto bottom = r;
-    auto leftBig = bottom.removeFromLeft(getWidth() / 2).removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
-    auto rightBig = bottom.removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
-    generateBtn.setBounds(leftBig);
-    dragBtn.setBounds(rightBig);
+    generateBtn.setCentrePosition(bottom.getCentreX() - generateBtn.getWidth() / 2 - 10, bottom.getCentreY());
+    dragBtn.setCentrePosition(bottom.getCentreX() + dragBtn.getWidth() / 2 + 10, bottom.getCentreY());
+
 
     // Ensure all buttons sit above the roll
     for (auto* b : { &engineChordsBtn, &engineMixtureBtn, &engineMelodyBtn,
                      &generateBtn, &dragBtn, &polyrBtn, &reharmBtn,
                      &adjustBtn, &diceBtn })
         b->toFront(false);
+
+    rollView.toBack();
 }
 
 
