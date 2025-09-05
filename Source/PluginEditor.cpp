@@ -461,9 +461,20 @@ void BANGAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds().reduced(16);
 
-    // ---- Top: Logo centered, “engine” row under it ----
+    // ---- Top: Logo centered ----
     auto top = r.removeFromTop(120);
     logoImg.setBounds(top.withSizeKeepingCentre(360, 90));
+
+    // ---- Small middle buttons (Advanced / Polyrhythm / Reharmonize) below logo ----
+    auto midRow = r.removeFromTop(52);
+    const int smW = 160, smH = 44, smGap = 18;
+    juce::Rectangle<int> smallRow(0, 0, smW * 3 + smGap * 2, smH);
+    smallRow = smallRow.withCentre(midRow.getCentre());
+    advancedBtn.setBounds(smallRow.removeFromLeft(smW));
+    smallRow.removeFromLeft(smGap);
+    polyrBtn.setBounds(smallRow.removeFromLeft(smW));
+    smallRow.removeFromLeft(smGap);
+    reharmBtn.setBounds(smallRow.removeFromLeft(smW));
 
     // Area for left column (selectors) and right column (humanize)
     auto columns = r.removeFromTop(200);
@@ -485,8 +496,9 @@ void BANGAudioProcessorEditor::resized()
     row = left.removeFromTop(38);      restLbl.setBounds(row.removeFromLeft(90));
     restSl.setBounds(row.reduced(4));
 
-    // Adjust button aligned with Rest row (never under the roll)
-    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(160));
+    // Adjust button below the left column controls
+    auto adjustRow = left.removeFromTop(44);
+    adjustBtn.setBounds(adjustRow.withSizeKeepingCentre(160, 40)); // Centered in the remaining space of the row
     adjustBtn.toFront(false);
 
     // ---- RIGHT column (Humanize title + 4 sliders) ----
@@ -500,17 +512,6 @@ void BANGAudioProcessorEditor::resized()
     // Dice button at the top-right
     diceBtn.setBounds(right.removeFromTop(36).removeFromRight(40));
     diceBtn.toFront(false);
-
-    // ---- Small middle buttons (Advanced / Polyrhythm / Reharmonize) ----
-    auto midRow = r.removeFromTop(52);
-    const int smW = 160, smH = 44, smGap = 18;
-    juce::Rectangle<int> smallRow(0, 0, smW * 3 + smGap * 2, smH);
-    smallRow = smallRow.withCentre(midRow.getCentre());
-    advancedBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    polyrBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    reharmBtn.setBounds(smallRow.removeFromLeft(smW));
 
     // ---- Engine selector row (3 image buttons under the “engine” title image) ----
     auto engineRow = r.removeFromTop(60);
@@ -534,7 +535,7 @@ void BANGAudioProcessorEditor::resized()
     rollView.toBack();
 
     // Update roll content width to match bars × beats (you already have these helpers)
-    updateRollContentSize();   // keeps the content wider than the viewport as needed :contentReference[oaicite:1]{index=1}
+    updateRollContentSize();
 
     // ---- Bottom big buttons ----
     const int bigW = 300, bigH = 72;
