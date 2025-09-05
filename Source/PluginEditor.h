@@ -69,6 +69,9 @@ private:
 
     AdvancedHarmonyOptions advOptions;      // passed into generator
 
+    double polyrhythmAmount = 25.0;
+    double reharmonizeAmount = 30.0;
+
     std::vector<Note> lastMelody;
     std::vector<Note> lastChords;
 

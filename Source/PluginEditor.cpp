@@ -675,13 +675,19 @@ void BANGAudioProcessorEditor::pushSettingsToGenerator()
     const float feelAmt = (float)lim01(feelSl.getValue());
     const float swingAmt = (float)lim01(swingSl.getValue());
 
+    gen.setAdvancedHarmonyOptions(&advOptions);
+
     gen.enableStyleAwareTiming(true);
     gen.setStyleTimingAmount(juce::jlimit(0.0f, 1.0f, timingAmt * 0.6f + velAmt * 0.2f + feelAmt * 0.2f));
-    gen.setPolyrhythmAmount(swingAmt);
+
+    gen.setPolyrhythmAmount((float)lim01(polyrhythmAmount));
+    gen.setFeelAmount((float)lim01(reharmonizeAmount));
+    gen.setSwingAmount(swingAmt);
 }
 
 void BANGAudioProcessorEditor::regenerate()
 {
+    pushSettingsToGenerator();
     auto& gen = audioProcessor.getMidiGenerator();
     lastMelody.clear();
     lastChords.clear();
@@ -808,10 +814,10 @@ void BANGAudioProcessorEditor::openPolyrhythm()
         {
             addAndMakeVisible(amount);
             amount.setRange(0.0, 100.0, 1.0);
-            amount.setValue(ed.swingSl.getValue());
+            amount.setValue(editor.polyrhythmAmount);
             amount.onValueChange = [this]
             {
-                editor.swingSl.setValue(amount.getValue(), juce::sendNotification);
+                editor.polyrhythmAmount = amount.getValue();
                 editor.pushSettingsToGenerator();
             };
         }
@@ -840,10 +846,10 @@ void BANGAudioProcessorEditor::openReharmonize()
         {
             addAndMakeVisible(complexity);
             complexity.setRange(0.0, 100.0, 1.0);
-            complexity.setValue(ed.feelSl.getValue());
+            complexity.setValue(editor.reharmonizeAmount);
             complexity.onValueChange = [this]
             {
-                editor.feelSl.setValue(complexity.getValue(), juce::sendNotification);
+                editor.reharmonizeAmount = complexity.getValue();
                 editor.pushSettingsToGenerator();
             };
         }
