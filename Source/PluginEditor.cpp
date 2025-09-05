@@ -409,13 +409,13 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     setImageButton3(engineMixtureBtn, { "enginemixture", "mixtureBtn", "MixtureBtn", "mixture" });
     setImageButton3(engineMelodyBtn, { "enginemelody", "melodyBtn", "MelodyBtn", "melody" });
 
-    setImageButton3(advancedBtn, { "AdvancedHarmonyBtn", "advancedBtn", "ADVANCED_HARMONY" });
-    setImageButton3(polyrBtn, { "PolyrhythmBtn",     "polyrBtn",     "POLYRHYTHM" });
-    setImageButton3(reharmBtn, { "reharmBtn",    "reharmBtn",    "REHARMONIZE" });
-    setImageButton3(adjustBtn, { "adjustBtn",         "AdjustBtn",    "ADJUST" });
-    setImageButton3(generateBtn, { "generateBtn",       "generateBtn",  "GENERATE" });
-    setImageButton3(dragBtn, { "dragBtn",           "dragBtn",      "DRAG" });
-    setImageButton3(diceBtn, { "DiceBtn",           "diceBtn",      "DICE" });
+    setImageButton3(advancedBtn, { "advanced", "AdvancedHarmonyBtn", "advancedBtn", "ADVANCED_HARMONY" });
+    setImageButton3(polyrBtn, { "polyr", "PolyrhythmBtn",     "polyrBtn",     "POLYRHYTHM" });
+    setImageButton3(reharmBtn, { "reharm", "reharmBtn",    "reharmBtn",    "REHARMONIZE" });
+    setImageButton3(adjustBtn, { "adjust", "adjustBtn",         "AdjustBtn",    "ADJUST" });
+    setImageButton3(generateBtn, { "generate", "generateBtn",       "generateBtn",  "GENERATE" });
+    setImageButton3(dragBtn, { "drag", "dragBtn",           "dragBtn",      "DRAG" });
+    setImageButton3(diceBtn, { "diceBtn", "DiceBtn",           "diceBtn",      "DICE" });
 
     // Piano palette (your colors)
     {
@@ -529,21 +529,30 @@ void BANGAudioProcessorEditor::resized()
     auto header = r.removeFromTop(headerH);
     // if you draw bar numbers yourself, set bounds here for that component
 
-    // Viewport area for the roll; give the rest of the space except bottom buttons
-    auto spaceForRoll = r.removeFromBottom(r.getHeight() - 100);
-    rollView.setBounds(spaceForRoll);
-    rollView.toBack();
+    // ---- Piano roll / Bottom Buttons Area ----
+    const int bottomButtonHeight = 100;
+    const int bigH = 72; // Fixed height for the big buttons
+    const int bigGap = 40;
+    int bigW = 300; // Default width
 
-    // Update roll content width to match bars × beats (you already have these helpers)
+    // Get the image from one of the buttons to calculate aspect ratio
+    auto& btnImage = generateBtn.getNormalImage();
+    if (btnImage.isValid())
+    {
+        bigW = (int)( (float)btnImage.getWidth() / (float)btnImage.getHeight() * (float)bigH );
+    }
+
+    auto bottomArea = r.removeFromBottom(bottomButtonHeight);
+    rollView.setBounds(r); // Use the remaining area for the piano roll
+    rollView.toBack();
     updateRollContentSize();
 
     // ---- Bottom big buttons ----
-    const int bigW = 300, bigH = 72;
-    auto bottom = r;
-    auto leftBig = bottom.removeFromLeft(getWidth() / 2).removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
-    auto rightBig = bottom.removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
-    generateBtn.setBounds(leftBig);
-    dragBtn.setBounds(rightBig);
+    juce::Rectangle<int> buttonGroup(0, 0, bigW * 2 + bigGap, bigH);
+    buttonGroup = buttonGroup.withCentre(bottomArea.getCentre());
+
+    generateBtn.setBounds(buttonGroup.removeFromLeft(bigW));
+    dragBtn.setBounds(buttonGroup.removeFromRight(bigW));
 
     // Ensure all buttons sit above the roll
     for (auto* b : { &engineChordsBtn, &engineMixtureBtn, &engineMelodyBtn,
