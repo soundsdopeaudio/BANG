@@ -86,98 +86,6 @@ static void setImageButton3(juce::ImageButton& b,
     );
 }
 
-
-// Set images for a juce::ImageButton with all hover/down variants if available.
-// Usage: setImageButton3(generateBtn, {"GenerateBtn", "GenerateBtn_normal.png"});
-static void setImageButton3(juce::ImageButton& btn,
-    std::initializer_list<const char*> baseNameCandidates)
-{
-    // Build the candidate lists for normal/over/down using all basenames you pass in.
-    std::vector<const char*> normalList, overList, downList;
-
-    auto pushAll = [](std::vector<const char*>& dst, const char* base)
-    {
-        // exact filename as-is
-        dst.push_back(base);
-        // common patterns
-        // base.png
-        {
-            static thread_local std::string s;
-            s = base; s += ".png";              dst.push_back(s.c_str());
-        }
-        // base_normal.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_normal.png";       dst.push_back(s.c_str());
-        }
-        // base_over.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_over.png";         dst.push_back(s.c_str());
-        }
-        // base_hover.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_hover.png";        dst.push_back(s.c_str());
-        }
-        // base_down.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_down.png";         dst.push_back(s.c_str());
-        }
-        // base_pressed.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_pressed.png";      dst.push_back(s.c_str());
-        }
-        // base_on.png (some sets use “on/off”)
-        {
-            static thread_local std::string s;
-            s = base; s += "_on.png";           dst.push_back(s.c_str());
-        }
-        // base_off.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_off.png";          dst.push_back(s.c_str());
-        }
-    };
-
-    // For each candidate base name you pass, add all plausible variants.
-    for (auto* base : baseNameCandidates)
-    {
-        pushAll(normalList, base);
-        pushAll(overList, base);
-        pushAll(downList, base);
-    }
-
-    // Try to load an actual image for each state.
-    auto normal = loadImageAny(normalList);
-    auto over = loadImageAny(overList);
-    auto down = loadImageAny(downList);
-
-    // Fallbacks so the button is at least visible if only one image exists.
-    if (!normal.isValid() && over.isValid())  normal = over;
-    if (!normal.isValid() && down.isValid())  normal = down;
-    if (!over.isValid())                      over = normal;
-    if (!down.isValid())                      down = normal;
-
-    // If still nothing, fill a visible placeholder so you SEE the button area.
-    if (!normal.isValid())
-    {
-        normal = juce::Image(juce::Image::ARGB, 160, 48, true);
-        juce::Graphics g(normal);
-        g.fillAll(juce::Colours::darkred);
-        g.setColour(juce::Colours::black);
-        g.drawRect(normal.getBounds(), 2);
-        g.setColour(juce::Colours::white);
-        g.drawText("MISSING IMG", normal.getBounds(), juce::Justification::centred);
-    }
-    if (!over.isValid()) over = normal;
-    if (!down.isValid()) down = normal;
-
-    setImageButton3(btn, normal, over, down);
-}
-
 // ======== Filesystem image helpers ========
 
 // fuzzy lookup: tries <hint>.png, <hint>_hover.png, etc. by scanning the Resources directory.
@@ -348,9 +256,9 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     styleHumanSlider(feelSl);     feelSl.setValue(30.0); addAndMakeVisible(feelSl);     feelSl.addListener(this);
 
     // ----- Engine buttons (image buttons with 3 states) -----
-    addAndMakeVisible(engineChordsBtn);   setImageButton3(engineChordsBtn, "chords");
-    addAndMakeVisible(engineMixtureBtn);  setImageButton3(engineMixtureBtn, "mixture");
-    addAndMakeVisible(engineMelodyBtn);   setImageButton3(engineMelodyBtn, "melody");
+    addAndMakeVisible(engineChordsBtn);   setImageButton3(engineChordsBtn, "enginechords");
+    addAndMakeVisible(engineMixtureBtn);  setImageButton3(engineMixtureBtn, "enginemixture");
+    addAndMakeVisible(engineMelodyBtn);   setImageButton3(engineMelodyBtn, "enginemelody");
 
     for (auto* b : { &engineChordsBtn, &engineMixtureBtn, &engineMelodyBtn })
     {
@@ -371,7 +279,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     addAndMakeVisible(polyrBtn);    setImageButton3(polyrBtn, "polyr");
     addAndMakeVisible(reharmBtn);   setImageButton3(reharmBtn, "reharm");
     addAndMakeVisible(adjustBtn);   setImageButton3(adjustBtn, "adjust");
-    addAndMakeVisible(diceBtn);     setImageButton3(diceBtn, "dice");
+    addAndMakeVisible(diceBtn);     setImageButton3(diceBtn, "diceBtn");
 
     generateBtn.onClick = [this] { regenerate(); };
     dragBtn.onClick = [this] { performDragExport(); };
@@ -403,19 +311,6 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     diceBtn.toFront(true);
 
     pianoRoll.toBack(); // roll under the buttons just in case
-
-    // Example: pass *your* base names. The helper will try base.png, base_normal.png, base_over.png, base_down.png, etc.
-    setImageButton3(engineChordsBtn, { "enginechords", "chordsBtn", "ChordsBtn", "chords" });
-    setImageButton3(engineMixtureBtn, { "enginemixture", "mixtureBtn", "MixtureBtn", "mixture" });
-    setImageButton3(engineMelodyBtn, { "enginemelody", "melodyBtn", "MelodyBtn", "melody" });
-
-    setImageButton3(advancedBtn, { "advanced", "AdvancedHarmonyBtn", "advancedBtn", "ADVANCED_HARMONY" });
-    setImageButton3(polyrBtn, { "polyr", "PolyrhythmBtn",     "polyrBtn",     "POLYRHYTHM" });
-    setImageButton3(reharmBtn, { "reharm", "reharmBtn",    "reharmBtn",    "REHARMONIZE" });
-    setImageButton3(adjustBtn, { "adjust", "adjustBtn",         "AdjustBtn",    "ADJUST" });
-    setImageButton3(generateBtn, { "generate", "generateBtn",       "generateBtn",  "GENERATE" });
-    setImageButton3(dragBtn, { "drag", "dragBtn",           "dragBtn",      "DRAG" });
-    setImageButton3(diceBtn, { "diceBtn", "DiceBtn",           "diceBtn",      "DICE" });
 
     // Piano palette (your colors)
     {
