@@ -93,42 +93,67 @@ static void setImageButton3(juce::ImageButton& btn,
     std::initializer_list<const char*> baseNameCandidates)
 {
     // Build the candidate lists for normal/over/down using all basenames you pass in.
-    std::vector<std::string> normalStrings, overStrings, downStrings;
+    std::vector<const char*> normalList, overList, downList;
 
-    auto pushAll = [](std::vector<std::string>& dst, const char* base)
+    auto pushAll = [](std::vector<const char*>& dst, const char* base)
     {
+        // exact filename as-is
         dst.push_back(base);
-        dst.push_back(std::string(base) + ".png");
-        dst.push_back(std::string(base) + "_normal.png");
-        dst.push_back(std::string(base) + "_over.png");
-        dst.push_back(std::string(base) + "_hover.png");
-        dst.push_back(std::string(base) + "_down.png");
-        dst.push_back(std::string(base) + "_pressed.png");
-        dst.push_back(std::string(base) + "_on.png");
-        dst.push_back(std::string(base) + "_off.png");
+        // common patterns
+        // base.png
+        {
+            static thread_local std::string s;
+            s = base; s += ".png";              dst.push_back(s.c_str());
+        }
+        // base_normal.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_normal.png";       dst.push_back(s.c_str());
+        }
+        // base_over.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_over.png";         dst.push_back(s.c_str());
+        }
+        // base_hover.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_hover.png";        dst.push_back(s.c_str());
+        }
+        // base_down.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_down.png";         dst.push_back(s.c_str());
+        }
+        // base_pressed.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_pressed.png";      dst.push_back(s.c_str());
+        }
+        // base_on.png (some sets use “on/off”)
+        {
+            static thread_local std::string s;
+            s = base; s += "_on.png";           dst.push_back(s.c_str());
+        }
+        // base_off.png
+        {
+            static thread_local std::string s;
+            s = base; s += "_off.png";          dst.push_back(s.c_str());
+        }
     };
 
     // For each candidate base name you pass, add all plausible variants.
     for (auto* base : baseNameCandidates)
     {
-        pushAll(normalStrings, base);
-        pushAll(overStrings, base);
-        pushAll(downStrings, base);
+        pushAll(normalList, base);
+        pushAll(overList, base);
+        pushAll(downList, base);
     }
 
-    auto toCStrVec = [](const std::vector<std::string>& strings) {
-        std::vector<const char*> cstrs;
-        cstrs.reserve(strings.size());
-        for (const auto& s : strings) {
-            cstrs.push_back(s.c_str());
-        }
-        return cstrs;
-    };
-
     // Try to load an actual image for each state.
-    auto normal = loadImageAny(toCStrVec(normalStrings));
-    auto over = loadImageAny(toCStrVec(overStrings));
-    auto down = loadImageAny(toCStrVec(downStrings));
+    auto normal = loadImageAny(normalList);
+    auto over = loadImageAny(overList);
+    auto down = loadImageAny(downList);
 
     // Fallbacks so the button is at least visible if only one image exists.
     if (!normal.isValid() && over.isValid())  normal = over;
@@ -232,15 +257,16 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
         cb.setColour(juce::ComboBox::arrowColourId, outline);
     };
 
-    if (auto img = loadImageByHint("keyLbl"); img.isValid()) keyLbl.setImage(img);
-    if (auto img = loadImageByHint("scaleLbl"); img.isValid()) scaleLbl.setImage(img);
-    if (auto img = loadImageByHint("timesigLbl"); img.isValid()) tsLbl.setImage(img);
-    if (auto img = loadImageByHint("barsLbl"); img.isValid()) barsLbl.setImage(img);
-    if (auto img = loadImageByHint("restdensityLbl"); img.isValid()) restLbl.setImage(img);
+    keyLbl.setText("KEY", juce::dontSendNotification);
+    scaleLbl.setText("SCALE", juce::dontSendNotification);
+    tsLbl.setText("TIME SIG", juce::dontSendNotification);
+    barsLbl.setText("BARS", juce::dontSendNotification);
+    restLbl.setText("REST %", juce::dontSendNotification);
 
     for (auto* l : { &keyLbl, &scaleLbl, &tsLbl, &barsLbl, &restLbl })
     {
-        l->setImagePlacement(juce::RectanglePlacement::centred);
+        l->setColour(juce::Label::textColourId, juce::Colours::black);
+        l->setJustificationType(juce::Justification::centredRight);
         addAndMakeVisible(*l);
     }
 
@@ -293,11 +319,12 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     restSl.setColour(juce::Slider::textBoxTextColourId, juce::Colours::black);
     restSl.setTextValueSuffix(" %");
     restSl.addListener(this);
+    restSl.setLookAndFeel(&customLookAndFeel);
     addAndMakeVisible(restSl);
 
     // ----- Right: Humanize -----
-    if (auto img = loadImageByHint("humanizeLbl"); img.isValid()) humanizeTitle.setImage(img);
-    humanizeTitle.setImagePlacement(juce::RectanglePlacement::centred);
+    humanizeTitle.setText("HUMANIZE", juce::dontSendNotification);
+    humanizeTitle.setColour(juce::Label::textColourId, juce::Colours::black);
     addAndMakeVisible(humanizeTitle);
 
     auto styleHumanSlider = [accent](juce::Slider& s)
@@ -309,11 +336,17 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
         s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 22);
     };
 
+    addAndMakeVisible(timingLbl);   timingLbl.setText("HUMANIZE TIMING", juce::dontSendNotification);
+    addAndMakeVisible(velocityLbl); velocityLbl.setText("VELOCITY", juce::dontSendNotification);
+    addAndMakeVisible(swingLbl);    swingLbl.setText("SWING", juce::dontSendNotification);
+    addAndMakeVisible(feelLbl);     feelLbl.setText("FEEL", juce::dontSendNotification);
+    for (auto* l : { &timingLbl, &velocityLbl, &swingLbl, &feelLbl })
+        l->setColour(juce::Label::textColourId, juce::Colours::black);
 
-    styleHumanSlider(timingSl);   timingSl.setValue(40.0); addAndMakeVisible(timingSl);   timingSl.addListener(this);
-    styleHumanSlider(velocitySl); velocitySl.setValue(35.0); addAndMakeVisible(velocitySl); velocitySl.addListener(this);
-    styleHumanSlider(swingSl);    swingSl.setValue(25.0); addAndMakeVisible(swingSl);    swingSl.addListener(this);
-    styleHumanSlider(feelSl);     feelSl.setValue(30.0); addAndMakeVisible(feelSl);     feelSl.addListener(this);
+    styleHumanSlider(timingSl);   timingSl.setValue(40.0); timingSl.setLookAndFeel(&customLookAndFeel); addAndMakeVisible(timingSl);   timingSl.addListener(this);
+    styleHumanSlider(velocitySl); velocitySl.setValue(35.0); velocitySl.setLookAndFeel(&customLookAndFeel); addAndMakeVisible(velocitySl); velocitySl.addListener(this);
+    styleHumanSlider(swingSl);    swingSl.setValue(25.0); swingSl.setLookAndFeel(&customLookAndFeel); addAndMakeVisible(swingSl);    swingSl.addListener(this);
+    styleHumanSlider(feelSl);     feelSl.setValue(30.0); feelSl.setLookAndFeel(&customLookAndFeel); addAndMakeVisible(feelSl);     feelSl.addListener(this);
 
     // ----- Engine buttons (image buttons with 3 states) -----
     addAndMakeVisible(engineChordsBtn);   setImageButton3(engineChordsBtn, "chords");
@@ -430,77 +463,66 @@ void BANGAudioProcessorEditor::resized()
     auto r = getLocalBounds().reduced(16);
 
     // ---- Top: Logo centered, “engine” row under it ----
-    auto top = r.removeFromTop(180);
-    auto layoutArea = top; // Use a copy for layout
-
-    logoImg.setBounds(layoutArea.removeFromTop(90).withSizeKeepingCentre(360, 90));
-
-    layoutArea.removeFromTop(15); // space
-    engineTitleImg.setBounds(layoutArea.removeFromTop(30).withSizeKeepingCentre(120, 30));
-    layoutArea.removeFromTop(10); // space
-
-    const int eW = 46, eH = 46, eGap = 16;
-    juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
-    engineBar.setCentre(layoutArea.getCentreX(), layoutArea.getCentreY());
-    engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMelodyBtn.setBounds(engineBar.removeFromLeft(eW));
+    auto top = r.removeFromTop(120);
+    logoImg.setBounds(top.withSizeKeepingCentre(360, 90));
 
     // Area for left column (selectors) and right column (humanize)
     auto columns = r.removeFromTop(200);
 
     // ---- LEFT column (Key/Scale/TS/Bars/Rest) ----
     auto left = columns.removeFromLeft(420);
+    auto row = left.removeFromTop(38); keyLbl.setBounds(row.removeFromLeft(90));
+    keyBox.setBounds(row.reduced(4)); // full row for combo
 
-    auto row = left.removeFromTop(38);
-    keyLbl.setBounds(row.removeFromLeft(40));
-    keyBox.setBounds(row.reduced(4));
-
-    row = left.removeFromTop(38);
-    scaleLbl.setBounds(row.removeFromLeft(40));
+    row = left.removeFromTop(38);      scaleLbl.setBounds(row.removeFromLeft(90));
     scaleBox.setBounds(row.reduced(4));
 
-    row = left.removeFromTop(38);
-    tsLbl.setBounds(row.removeFromLeft(40));
+    row = left.removeFromTop(38);      tsLbl.setBounds(row.removeFromLeft(90));
     tsBox.setBounds(row.reduced(4));
 
-    row = left.removeFromTop(38);
-    barsLbl.setBounds(row.removeFromLeft(40));
+    row = left.removeFromTop(38);      barsLbl.setBounds(row.removeFromLeft(90));
     barsBox.setBounds(row.reduced(4));
 
-    row = left.removeFromTop(38);
-    restLbl.setBounds(row.removeFromLeft(40));
+    row = left.removeFromTop(38);      restLbl.setBounds(row.removeFromLeft(90));
     restSl.setBounds(row.reduced(4));
 
     // Adjust button aligned with Rest row (never under the roll)
-    left.removeFromTop(10); // Add some space
-    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(120));
+    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(160));
     adjustBtn.toFront(false);
 
     // ---- RIGHT column (Humanize title + 4 sliders) ----
     auto right = columns;
-    humanizeTitle.setBounds(right.removeFromTop(40).withSizeKeepingCentre(150, 40));
-    auto slRow = right.removeFromTop(40); timingSl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      velocitySl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      swingSl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      feelSl.setBounds(slRow.reduced(4));
+    humanizeTitle.setBounds(right.removeFromTop(24));
+    auto slRow = right.removeFromTop(40); timingLbl.setBounds(slRow.removeFromLeft(120)); timingSl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      velocityLbl.setBounds(slRow.removeFromLeft(120)); velocitySl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      swingLbl.setBounds(slRow.removeFromLeft(120));    swingSl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      feelLbl.setBounds(slRow.removeFromLeft(120));     feelSl.setBounds(slRow.reduced(4));
 
     // Dice button at the top-right
-    diceBtn.setBounds(right.removeFromTop(36).removeFromRight(36));
+    diceBtn.setBounds(right.removeFromTop(36).removeFromRight(40));
     diceBtn.toFront(false);
 
     // ---- Small middle buttons (Advanced / Polyrhythm / Reharmonize) ----
     auto midRow = r.removeFromTop(52);
     const int smW = 160, smH = 44, smGap = 18;
-    auto buttonsArea = midRow.withSizeKeepingCentre(smW * 3 + smGap * 2, smH);
-    advancedBtn.setBounds(buttonsArea.removeFromLeft(smW));
-    buttonsArea.removeFromLeft(smGap);
-    polyrBtn.setBounds(buttonsArea.removeFromLeft(smW));
-    buttonsArea.removeFromLeft(smGap);
-    reharmBtn.setBounds(buttonsArea.removeFromLeft(smW));
+    juce::Rectangle<int> smallRow(0, 0, smW * 3 + smGap * 2, smH);
+    smallRow = smallRow.withCentre(midRow.getCentre());
+    advancedBtn.setBounds(smallRow.removeFromLeft(smW));
+    smallRow.removeFromLeft(smGap);
+    polyrBtn.setBounds(smallRow.removeFromLeft(smW));
+    smallRow.removeFromLeft(smGap);
+    reharmBtn.setBounds(smallRow.removeFromLeft(smW));
 
+    // ---- Engine selector row (3 image buttons under the “engine” title image) ----
+    auto engineRow = r.removeFromTop(60);
+    const int eW = 56, eH = 46, eGap = 16;
+    juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
+    engineBar = engineBar.withCentre(engineRow.getCentre());
+    engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
+    engineBar.removeFromLeft(eGap);
+    engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
+    engineBar.removeFromLeft(eGap);
+    engineMelodyBtn.setBounds(engineBar.removeFromLeft(eW));
 
     // ---- Piano roll (header height ≈ 28) ----
     const int headerH = 28;
@@ -635,19 +657,13 @@ void BANGAudioProcessorEditor::pushSettingsToGenerator()
     const float feelAmt = (float)lim01(feelSl.getValue());
     const float swingAmt = (float)lim01(swingSl.getValue());
 
-    gen.setAdvancedHarmonyOptions(&advOptions);
-
     gen.enableStyleAwareTiming(true);
     gen.setStyleTimingAmount(juce::jlimit(0.0f, 1.0f, timingAmt * 0.6f + velAmt * 0.2f + feelAmt * 0.2f));
-
-    gen.setPolyrhythmAmount((float)lim01(polyrhythmAmount));
-    gen.setFeelAmount((float)lim01(reharmonizeAmount));
-    gen.setSwingAmount(swingAmt);
+    gen.setPolyrhythmAmount(swingAmt);
 }
 
 void BANGAudioProcessorEditor::regenerate()
 {
-    pushSettingsToGenerator();
     auto& gen = audioProcessor.getMidiGenerator();
     lastMelody.clear();
     lastChords.clear();
@@ -666,7 +682,7 @@ void BANGAudioProcessorEditor::regenerate()
     }
 
     // If your PianoRoll has an API to set notes, call it here (keep names you already use)
-    pianoRoll.setNotes(lastMelody, lastChords);
+    // pianoRoll.setNotes(lastMelody, lastChords);
     pianoRoll.repaint();
 }
 
@@ -770,18 +786,36 @@ void BANGAudioProcessorEditor::openPolyrhythm()
     {
         BANGAudioProcessorEditor& editor;
         juce::Slider amount;
+        juce::ImageComponent titleLabel;
+
         PolyComp(BANGAudioProcessorEditor& ed) : editor(ed)
         {
+            addAndMakeVisible(titleLabel);
+            if (auto img = loadImageByHint("polyrLbl"); img.isValid()) titleLabel.setImage(img);
+            titleLabel.setImagePlacement(juce::RectanglePlacement::centred);
+
             addAndMakeVisible(amount);
             amount.setRange(0.0, 100.0, 1.0);
-            amount.setValue(editor.polyrhythmAmount);
+            amount.setValue(ed.swingSl.getValue());
             amount.onValueChange = [this]
             {
-                editor.polyrhythmAmount = amount.getValue();
+                editor.swingSl.setValue(amount.getValue(), juce::sendNotification);
                 editor.pushSettingsToGenerator();
             };
+            amount.setColour(juce::Slider::textBoxTextColourId, juce::Colour::fromString("#de4e02"));
         }
-        void resized() override { amount.setBounds(getLocalBounds().reduced(20)); }
+
+        void paint(juce::Graphics& g) override
+        {
+            g.fillAll(juce::Colour::fromString("#a8e000"));
+        }
+
+        void resized() override
+        {
+            auto bounds = getLocalBounds();
+            titleLabel.setBounds(bounds.removeFromTop(40));
+            amount.setBounds(bounds.reduced(20));
+        }
     };
 
     auto* comp = new PolyComp(*this);
@@ -802,18 +836,36 @@ void BANGAudioProcessorEditor::openReharmonize()
     {
         BANGAudioProcessorEditor& editor;
         juce::Slider complexity;
+        juce::ImageComponent titleLabel;
+
         RehComp(BANGAudioProcessorEditor& ed) : editor(ed)
         {
+            addAndMakeVisible(titleLabel);
+            if (auto img = loadImageByHint("reharmLbl"); img.isValid()) titleLabel.setImage(img);
+            titleLabel.setImagePlacement(juce::RectanglePlacement::centred);
+
             addAndMakeVisible(complexity);
             complexity.setRange(0.0, 100.0, 1.0);
-            complexity.setValue(editor.reharmonizeAmount);
+            complexity.setValue(ed.feelSl.getValue());
             complexity.onValueChange = [this]
             {
-                editor.reharmonizeAmount = complexity.getValue();
+                editor.feelSl.setValue(complexity.getValue(), juce::sendNotification);
                 editor.pushSettingsToGenerator();
             };
+            complexity.setColour(juce::Slider::textBoxTextColourId, juce::Colour::fromString("#de4e02"));
         }
-        void resized() override { complexity.setBounds(getLocalBounds().reduced(20)); }
+
+        void paint(juce::Graphics& g) override
+        {
+            g.fillAll(juce::Colour::fromString("#a8e000"));
+        }
+
+        void resized() override
+        {
+            auto bounds = getLocalBounds();
+            titleLabel.setBounds(bounds.removeFromTop(40));
+            complexity.setBounds(bounds.reduced(20));
+        }
     };
 
     auto* comp = new RehComp(*this);

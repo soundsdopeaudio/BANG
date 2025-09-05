@@ -11,6 +11,35 @@
 juce::Image loadImageByHint(const juce::String& hint);
 void setImageButton3(juce::ImageButton& b, const juce::String& baseHint);
 
+class CustomLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    CustomLookAndFeel()
+    {
+        sliderKnob = loadImageByHint("sliderknob");
+    }
+
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
+                           const float rotaryStartAngle, const float rotaryEndAngle, juce::Slider& slider) override
+    {
+        if (sliderKnob.isValid())
+        {
+            const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+
+            g.drawImageTransformed(sliderKnob, juce::AffineTransform::rotation(angle, sliderKnob.getWidth() * 0.5f, sliderKnob.getHeight() * 0.5f)
+                                              .translated(x, y));
+        }
+        else
+        {
+            // Fallback to default look and feel
+            LookAndFeel_V4::drawRotarySlider(g, x, y, width, height, sliderPos, rotaryStartAngle, rotaryEndAngle, slider);
+        }
+    }
+
+private:
+    juce::Image sliderKnob;
+};
+
 class BANGAudioProcessorEditor : public juce::AudioProcessorEditor,
     public juce::DragAndDropContainer,
     private juce::ComboBox::Listener,
@@ -28,6 +57,8 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
 
 private:
+    CustomLookAndFeel customLookAndFeel;
+
     // ===================== model / processor =====================
     BANGAudioProcessor& audioProcessor;
 

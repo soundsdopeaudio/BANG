@@ -34,6 +34,7 @@ public:
     void resized() override;
 
 private:
+    juce::ImageComponent titleLabel;
     AdvancedHarmonyOptions& options;
 
     juce::ToggleButton extButton  {"Enable Extensions"};
