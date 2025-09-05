@@ -8,11 +8,11 @@ static void styleLabel(juce::Label& l)
     l.setColour(juce::Label::textColourId, juce::Colour::fromString("#de4e02"));
 }
 
-AdvancedHarmonyWindow::AdvancedHarmonyWindow(AdvancedHarmonyOptions& opts)
+AdvancedHarmonyWindow::AdvancedHarmonyWindow(AdvancedHarmonyOptions& opts, std::function<juce::Image(const juce::String&)> imageLoader)
     : options(opts)
 {
     addAndMakeVisible(titleLabel);
-    if (auto img = loadImageByHint("advancedLbl"); img.isValid()) titleLabel.setImage(img);
+    if (auto img = imageLoader("advancedLbl"); img.isValid()) titleLabel.setImage(img);
     titleLabel.setImagePlacement(juce::RectanglePlacement::centred);
 
     const auto textColor = juce::Colour::fromString("#de4e02");

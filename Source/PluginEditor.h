@@ -16,18 +16,22 @@ class CustomLookAndFeel : public juce::LookAndFeel_V4
 public:
     CustomLookAndFeel()
     {
-        sliderKnob = loadImageByHint("sliderknob");
+        // In a real app, you'd load this from BinaryData or a known path
+        // For now, we assume loadImageByHint is available.
     }
 
     void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                            const float rotaryStartAngle, const float rotaryEndAngle, juce::Slider& slider) override
     {
+        if (!sliderKnob.isValid())
+            sliderKnob = loadImageByHint("sliderknob");
+
         if (sliderKnob.isValid())
         {
             const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-            g.drawImageTransformed(sliderKnob, juce::AffineTransform::rotation(angle, sliderKnob.getWidth() * 0.5f, sliderKnob.getHeight() * 0.5f)
-                                              .translated(x, y));
+            g.drawImageTransformed(sliderKnob, juce::AffineTransform::rotation(angle, static_cast<float>(sliderKnob.getWidth()) * 0.5f, static_cast<float>(sliderKnob.getHeight()) * 0.5f)
+                                              .translated(static_cast<float>(x), static_cast<float>(y)));
         }
         else
         {
@@ -39,6 +43,7 @@ public:
 private:
     juce::Image sliderKnob;
 };
+
 
 class BANGAudioProcessorEditor : public juce::AudioProcessorEditor,
     public juce::DragAndDropContainer,
@@ -83,7 +88,7 @@ private:
     juce::ImageButton engineChordsBtn;
     juce::ImageButton engineMixtureBtn;
     juce::ImageButton engineMelodyBtn;
-    int currentEngineIndex = 1; // 0=chords, 1=mixture (default), 2=melody
+    int currentEngineIndex = 1;
 
     // ===================== action buttons ========================
     juce::ImageButton generateBtn;
@@ -98,8 +103,7 @@ private:
     enum class EngineSel { Chords, Mixture, Melody };
     EngineSel engineSel{ EngineSel::Mixture };
 
-    AdvancedHarmonyOptions advOptions;      // passed into generator
-
+    AdvancedHarmonyOptions advOptions;
     double polyrhythmAmount = 25.0;
     double reharmonizeAmount = 30.0;
 

@@ -27,8 +27,10 @@ struct AdvancedHarmonyOptions
 
 class AdvancedHarmonyWindow : public juce::Component
 {
+#include <functional>
+
 public:
-    explicit AdvancedHarmonyWindow(AdvancedHarmonyOptions& opts);
+    explicit AdvancedHarmonyWindow(AdvancedHarmonyOptions& opts, std::function<juce::Image(const juce::String&)> imageLoader);
 
     void paint(juce::Graphics&) override;
     void resized() override;
