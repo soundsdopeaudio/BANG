@@ -8,8 +8,8 @@
 #include "BinaryData.h"
 
 // === Small helpers implemented in PluginEditor.cpp ===
-juce::Image loadImageByHint(const juce::String& hint);            // fuzzy lookup in BinaryData
-void setImageButton3(juce::ImageButton& b, const juce::String& baseHint); // normal/hover/down
+juce::Image loadImageByHint(const juce::String& hint);
+void setImageButton3(juce::ImageButton& b, const juce::String& baseHint);
 
 class BANGAudioProcessorEditor : public juce::AudioProcessorEditor,
     public juce::DragAndDropContainer,
@@ -45,7 +45,7 @@ private:
     PianoRollComponent  pianoRoll;
 
     // ===================== images / logo =========================
-    juce::ImageComponent logoImg;       // plugin logo
+    juce::ImageComponent logoImg;
     juce::ImageComponent engineTitleImg;
 
     // ===================== engine buttons ========================
