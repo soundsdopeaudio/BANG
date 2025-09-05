@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
@@ -32,13 +32,12 @@ private:
     BANGAudioProcessor& audioProcessor;
 
     // ===================== left selectors ========================
-    juce::Label   keyLbl, scaleLbl, tsLbl, barsLbl, restLbl;
+    juce::ImageComponent keyLbl, scaleLbl, tsLbl, barsLbl, restLbl;
     juce::ComboBox keyBox, scaleBox, tsBox, barsBox;
     juce::Slider   restSl; // 0..100% rest density
 
     // ===================== right humanize ========================
-    juce::Label  humanizeTitle;
-    juce::Label  timingLbl, velocityLbl, swingLbl, feelLbl; // headings
+    juce::ImageComponent humanizeTitle;
     juce::Slider timingSl, velocitySl, swingSl, feelSl;  // 0..100
 
     // ===================== center piano roll =====================

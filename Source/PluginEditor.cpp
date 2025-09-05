@@ -257,16 +257,15 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
         cb.setColour(juce::ComboBox::arrowColourId, outline);
     };
 
-    keyLbl.setText("KEY", juce::dontSendNotification);
-    scaleLbl.setText("SCALE", juce::dontSendNotification);
-    tsLbl.setText("TIME SIG", juce::dontSendNotification);
-    barsLbl.setText("BARS", juce::dontSendNotification);
-    restLbl.setText("REST %", juce::dontSendNotification);
+    if (auto img = loadImageByHint("keyLbl"); img.isValid()) keyLbl.setImage(img);
+    if (auto img = loadImageByHint("scaleLbl"); img.isValid()) scaleLbl.setImage(img);
+    if (auto img = loadImageByHint("timesigLbl"); img.isValid()) tsLbl.setImage(img);
+    if (auto img = loadImageByHint("barsLbl"); img.isValid()) barsLbl.setImage(img);
+    if (auto img = loadImageByHint("restdensityLbl"); img.isValid()) restLbl.setImage(img);
 
     for (auto* l : { &keyLbl, &scaleLbl, &tsLbl, &barsLbl, &restLbl })
     {
-        l->setColour(juce::Label::textColourId, juce::Colours::black);
-        l->setJustificationType(juce::Justification::centredRight);
+        l->setImagePlacement(juce::RectanglePlacement::centred);
         addAndMakeVisible(*l);
     }
 
@@ -322,8 +321,8 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     addAndMakeVisible(restSl);
 
     // ----- Right: Humanize -----
-    humanizeTitle.setText("HUMANIZE", juce::dontSendNotification);
-    humanizeTitle.setColour(juce::Label::textColourId, juce::Colours::black);
+    if (auto img = loadImageByHint("humanizeLbl"); img.isValid()) humanizeTitle.setImage(img);
+    humanizeTitle.setImagePlacement(juce::RectanglePlacement::centred);
     addAndMakeVisible(humanizeTitle);
 
     auto styleHumanSlider = [accent](juce::Slider& s)
@@ -335,12 +334,6 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
         s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 22);
     };
 
-    addAndMakeVisible(timingLbl);   timingLbl.setText("HUMANIZE TIMING", juce::dontSendNotification);
-    addAndMakeVisible(velocityLbl); velocityLbl.setText("VELOCITY", juce::dontSendNotification);
-    addAndMakeVisible(swingLbl);    swingLbl.setText("SWING", juce::dontSendNotification);
-    addAndMakeVisible(feelLbl);     feelLbl.setText("FEEL", juce::dontSendNotification);
-    for (auto* l : { &timingLbl, &velocityLbl, &swingLbl, &feelLbl })
-        l->setColour(juce::Label::textColourId, juce::Colours::black);
 
     styleHumanSlider(timingSl);   timingSl.setValue(40.0); addAndMakeVisible(timingSl);   timingSl.addListener(this);
     styleHumanSlider(velocitySl); velocitySl.setValue(35.0); addAndMakeVisible(velocitySl); velocitySl.addListener(this);
@@ -470,32 +463,55 @@ void BANGAudioProcessorEditor::resized()
 
     // ---- LEFT column (Key/Scale/TS/Bars/Rest) ----
     auto left = columns.removeFromLeft(420);
-    auto row = left.removeFromTop(38); keyLbl.setBounds(row.removeFromLeft(90));
-    keyBox.setBounds(row.reduced(4)); // full row for combo
+    auto controlsRow = left.removeFromTop(40);
 
-    row = left.removeFromTop(38);      scaleLbl.setBounds(row.removeFromLeft(90));
-    scaleBox.setBounds(row.reduced(4));
+    int lblW = 40; // label width
+    int gap = 4;
+    int comboWidth = 80;
+    int totalWidth = (lblW + comboWidth + gap) * 5;
+    controlsRow.setSize(totalWidth, 40);
 
-    row = left.removeFromTop(38);      tsLbl.setBounds(row.removeFromLeft(90));
-    tsBox.setBounds(row.reduced(4));
 
-    row = left.removeFromTop(38);      barsLbl.setBounds(row.removeFromLeft(90));
-    barsBox.setBounds(row.reduced(4));
+    auto keyArea = controlsRow.removeFromLeft(lblW + comboWidth);
+    keyLbl.setBounds(keyArea.removeFromLeft(lblW));
+    keyBox.setBounds(keyArea.reduced(gap));
 
-    row = left.removeFromTop(38);      restLbl.setBounds(row.removeFromLeft(90));
-    restSl.setBounds(row.reduced(4));
+    controlsRow.removeFromLeft(gap);
+
+    auto scaleArea = controlsRow.removeFromLeft(lblW + comboWidth);
+    scaleLbl.setBounds(scaleArea.removeFromLeft(lblW));
+    scaleBox.setBounds(scaleArea.reduced(gap));
+
+    controlsRow.removeFromLeft(gap);
+
+    auto tsArea = controlsRow.removeFromLeft(lblW + comboWidth);
+    tsLbl.setBounds(tsArea.removeFromLeft(lblW));
+    tsBox.setBounds(tsArea.reduced(gap));
+
+    controlsRow.removeFromLeft(gap);
+
+    auto barsArea = controlsRow.removeFromLeft(lblW + comboWidth);
+    barsLbl.setBounds(barsArea.removeFromLeft(lblW));
+    barsBox.setBounds(barsArea.reduced(gap));
+
+    controlsRow.removeFromLeft(gap);
+
+    auto restArea = controlsRow.removeFromLeft(lblW + comboWidth);
+    restLbl.setBounds(restArea.removeFromLeft(lblW));
+    restSl.setBounds(restArea.reduced(gap));
 
     // Adjust button aligned with Rest row (never under the roll)
-    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(160));
+    left.removeFromTop(10); // Add some space
+    adjustBtn.setBounds(left.removeFromTop(40).removeFromLeft(120));
     adjustBtn.toFront(false);
 
     // ---- RIGHT column (Humanize title + 4 sliders) ----
     auto right = columns;
-    humanizeTitle.setBounds(right.removeFromTop(24));
-    auto slRow = right.removeFromTop(40); timingLbl.setBounds(slRow.removeFromLeft(120)); timingSl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      velocityLbl.setBounds(slRow.removeFromLeft(120)); velocitySl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      swingLbl.setBounds(slRow.removeFromLeft(120));    swingSl.setBounds(slRow.reduced(4));
-    slRow = right.removeFromTop(40);      feelLbl.setBounds(slRow.removeFromLeft(120));     feelSl.setBounds(slRow.reduced(4));
+    humanizeTitle.setBounds(right.removeFromTop(40).withSizeKeepingCentre(150, 40));
+    auto slRow = right.removeFromTop(40); timingSl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      velocitySl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      swingSl.setBounds(slRow.reduced(4));
+    slRow = right.removeFromTop(40);      feelSl.setBounds(slRow.reduced(4));
 
     // Dice button at the top-right
     diceBtn.setBounds(right.removeFromTop(36).removeFromRight(40));
@@ -514,7 +530,7 @@ void BANGAudioProcessorEditor::resized()
 
     // ---- Engine selector row (3 image buttons under the “engine” title image) ----
     auto engineRow = r.removeFromTop(60);
-    const int eW = 56, eH = 46, eGap = 16;
+    const int eW = 46, eH = 46, eGap = 16;
     juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
     engineBar = engineBar.withCentre(engineRow.getCentre());
     engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
