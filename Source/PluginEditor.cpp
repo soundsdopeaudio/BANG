@@ -455,8 +455,22 @@ void BANGAudioProcessorEditor::resized()
     auto r = getLocalBounds().reduced(16);
 
     // ---- Top: Logo centered, “engine” row under it ----
-    auto top = r.removeFromTop(120);
-    logoImg.setBounds(top.withSizeKeepingCentre(360, 90));
+    auto top = r.removeFromTop(160); // more space
+    auto logoBounds = top.removeFromTop(90).withSizeKeepingCentre(360, 90);
+    logoImg.setBounds(logoBounds);
+
+    top.removeFromTop(10); // space
+    engineTitleImg.setBounds(top.removeFromTop(20).withSizeKeepingCentre(80, 20));
+    top.removeFromTop(5); // space
+
+    const int eW = 46, eH = 46, eGap = 16;
+    juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
+    engineBar.setCentre(top.getCentreX(), top.getCentreY());
+    engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
+    engineBar.removeFromLeft(eGap);
+    engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
+    engineBar.removeFromLeft(eGap);
+    engineMelodyBtn.setBounds(engineBar.removeFromLeft(eW));
 
     // Area for left column (selectors) and right column (humanize)
     auto columns = r.removeFromTop(200);
@@ -514,30 +528,19 @@ void BANGAudioProcessorEditor::resized()
     slRow = right.removeFromTop(40);      feelSl.setBounds(slRow.reduced(4));
 
     // Dice button at the top-right
-    diceBtn.setBounds(right.removeFromTop(36).removeFromRight(40));
+    diceBtn.setBounds(right.removeFromTop(36).removeFromRight(36));
     diceBtn.toFront(false);
 
     // ---- Small middle buttons (Advanced / Polyrhythm / Reharmonize) ----
     auto midRow = r.removeFromTop(52);
     const int smW = 160, smH = 44, smGap = 18;
-    juce::Rectangle<int> smallRow(0, 0, smW * 3 + smGap * 2, smH);
-    smallRow = smallRow.withCentre(midRow.getCentre());
-    advancedBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    polyrBtn.setBounds(smallRow.removeFromLeft(smW));
-    smallRow.removeFromLeft(smGap);
-    reharmBtn.setBounds(smallRow.removeFromLeft(smW));
+    auto buttonsArea = midRow.withSizeKeepingCentre(smW * 3 + smGap * 2, smH);
+    advancedBtn.setBounds(buttonsArea.removeFromLeft(smW));
+    buttonsArea.removeFromLeft(smGap);
+    polyrBtn.setBounds(buttonsArea.removeFromLeft(smW));
+    buttonsArea.removeFromLeft(smGap);
+    reharmBtn.setBounds(buttonsArea.removeFromLeft(smW));
 
-    // ---- Engine selector row (3 image buttons under the “engine” title image) ----
-    auto engineRow = r.removeFromTop(60);
-    const int eW = 46, eH = 46, eGap = 16;
-    juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
-    engineBar = engineBar.withCentre(engineRow.getCentre());
-    engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
-    engineBar.removeFromLeft(eGap);
-    engineMelodyBtn.setBounds(engineBar.removeFromLeft(eW));
 
     // ---- Piano roll (header height ≈ 28) ----
     const int headerH = 28;
