@@ -93,67 +93,42 @@ static void setImageButton3(juce::ImageButton& btn,
     std::initializer_list<const char*> baseNameCandidates)
 {
     // Build the candidate lists for normal/over/down using all basenames you pass in.
-    std::vector<const char*> normalList, overList, downList;
+    std::vector<std::string> normalStrings, overStrings, downStrings;
 
-    auto pushAll = [](std::vector<const char*>& dst, const char* base)
+    auto pushAll = [](std::vector<std::string>& dst, const char* base)
     {
-        // exact filename as-is
         dst.push_back(base);
-        // common patterns
-        // base.png
-        {
-            static thread_local std::string s;
-            s = base; s += ".png";              dst.push_back(s.c_str());
-        }
-        // base_normal.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_normal.png";       dst.push_back(s.c_str());
-        }
-        // base_over.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_over.png";         dst.push_back(s.c_str());
-        }
-        // base_hover.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_hover.png";        dst.push_back(s.c_str());
-        }
-        // base_down.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_down.png";         dst.push_back(s.c_str());
-        }
-        // base_pressed.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_pressed.png";      dst.push_back(s.c_str());
-        }
-        // base_on.png (some sets use “on/off”)
-        {
-            static thread_local std::string s;
-            s = base; s += "_on.png";           dst.push_back(s.c_str());
-        }
-        // base_off.png
-        {
-            static thread_local std::string s;
-            s = base; s += "_off.png";          dst.push_back(s.c_str());
-        }
+        dst.push_back(std::string(base) + ".png");
+        dst.push_back(std::string(base) + "_normal.png");
+        dst.push_back(std::string(base) + "_over.png");
+        dst.push_back(std::string(base) + "_hover.png");
+        dst.push_back(std::string(base) + "_down.png");
+        dst.push_back(std::string(base) + "_pressed.png");
+        dst.push_back(std::string(base) + "_on.png");
+        dst.push_back(std::string(base) + "_off.png");
     };
 
     // For each candidate base name you pass, add all plausible variants.
     for (auto* base : baseNameCandidates)
     {
-        pushAll(normalList, base);
-        pushAll(overList, base);
-        pushAll(downList, base);
+        pushAll(normalStrings, base);
+        pushAll(overStrings, base);
+        pushAll(downStrings, base);
     }
 
+    auto toCStrVec = [](const std::vector<std::string>& strings) {
+        std::vector<const char*> cstrs;
+        cstrs.reserve(strings.size());
+        for (const auto& s : strings) {
+            cstrs.push_back(s.c_str());
+        }
+        return cstrs;
+    };
+
     // Try to load an actual image for each state.
-    auto normal = loadImageAny(normalList);
-    auto over = loadImageAny(overList);
-    auto down = loadImageAny(downList);
+    auto normal = loadImageAny(toCStrVec(normalStrings));
+    auto over = loadImageAny(toCStrVec(overStrings));
+    auto down = loadImageAny(toCStrVec(downStrings));
 
     // Fallbacks so the button is at least visible if only one image exists.
     if (!normal.isValid() && over.isValid())  normal = over;
@@ -455,17 +430,18 @@ void BANGAudioProcessorEditor::resized()
     auto r = getLocalBounds().reduced(16);
 
     // ---- Top: Logo centered, “engine” row under it ----
-    auto top = r.removeFromTop(160); // more space
-    auto logoBounds = top.removeFromTop(90).withSizeKeepingCentre(360, 90);
-    logoImg.setBounds(logoBounds);
+    auto top = r.removeFromTop(180);
+    auto layoutArea = top; // Use a copy for layout
 
-    top.removeFromTop(10); // space
-    engineTitleImg.setBounds(top.removeFromTop(20).withSizeKeepingCentre(80, 20));
-    top.removeFromTop(5); // space
+    logoImg.setBounds(layoutArea.removeFromTop(90).withSizeKeepingCentre(360, 90));
+
+    layoutArea.removeFromTop(15); // space
+    engineTitleImg.setBounds(layoutArea.removeFromTop(30).withSizeKeepingCentre(120, 30));
+    layoutArea.removeFromTop(10); // space
 
     const int eW = 46, eH = 46, eGap = 16;
     juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
-    engineBar.setCentre(top.getCentreX(), top.getCentreY());
+    engineBar.setCentre(layoutArea.getCentreX(), layoutArea.getCentreY());
     engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
     engineBar.removeFromLeft(eGap);
     engineMixtureBtn.setBounds(engineBar.removeFromLeft(eW));
@@ -477,42 +453,26 @@ void BANGAudioProcessorEditor::resized()
 
     // ---- LEFT column (Key/Scale/TS/Bars/Rest) ----
     auto left = columns.removeFromLeft(420);
-    auto controlsRow = left.removeFromTop(40);
 
-    int lblW = 40; // label width
-    int gap = 4;
-    int comboWidth = 80;
-    int totalWidth = (lblW + comboWidth + gap) * 5;
-    controlsRow.setSize(totalWidth, 40);
+    auto row = left.removeFromTop(38);
+    keyLbl.setBounds(row.removeFromLeft(40));
+    keyBox.setBounds(row.reduced(4));
 
+    row = left.removeFromTop(38);
+    scaleLbl.setBounds(row.removeFromLeft(40));
+    scaleBox.setBounds(row.reduced(4));
 
-    auto keyArea = controlsRow.removeFromLeft(lblW + comboWidth);
-    keyLbl.setBounds(keyArea.removeFromLeft(lblW));
-    keyBox.setBounds(keyArea.reduced(gap));
+    row = left.removeFromTop(38);
+    tsLbl.setBounds(row.removeFromLeft(40));
+    tsBox.setBounds(row.reduced(4));
 
-    controlsRow.removeFromLeft(gap);
+    row = left.removeFromTop(38);
+    barsLbl.setBounds(row.removeFromLeft(40));
+    barsBox.setBounds(row.reduced(4));
 
-    auto scaleArea = controlsRow.removeFromLeft(lblW + comboWidth);
-    scaleLbl.setBounds(scaleArea.removeFromLeft(lblW));
-    scaleBox.setBounds(scaleArea.reduced(gap));
-
-    controlsRow.removeFromLeft(gap);
-
-    auto tsArea = controlsRow.removeFromLeft(lblW + comboWidth);
-    tsLbl.setBounds(tsArea.removeFromLeft(lblW));
-    tsBox.setBounds(tsArea.reduced(gap));
-
-    controlsRow.removeFromLeft(gap);
-
-    auto barsArea = controlsRow.removeFromLeft(lblW + comboWidth);
-    barsLbl.setBounds(barsArea.removeFromLeft(lblW));
-    barsBox.setBounds(barsArea.reduced(gap));
-
-    controlsRow.removeFromLeft(gap);
-
-    auto restArea = controlsRow.removeFromLeft(lblW + comboWidth);
-    restLbl.setBounds(restArea.removeFromLeft(lblW));
-    restSl.setBounds(restArea.reduced(gap));
+    row = left.removeFromTop(38);
+    restLbl.setBounds(row.removeFromLeft(40));
+    restSl.setBounds(row.reduced(4));
 
     // Adjust button aligned with Rest row (never under the roll)
     left.removeFromTop(10); // Add some space
@@ -706,7 +666,7 @@ void BANGAudioProcessorEditor::regenerate()
     }
 
     // If your PianoRoll has an API to set notes, call it here (keep names you already use)
-    // pianoRoll.setNotes(lastMelody, lastChords);
+    pianoRoll.setNotes(lastMelody, lastChords);
     pianoRoll.repaint();
 }
 
