@@ -514,7 +514,7 @@ void BANGAudioProcessorEditor::resized()
 
     // ---- Engine selector row (3 image buttons under the “engine” title image) ----
     auto engineRow = r.removeFromTop(60);
-    const int eW = 56, eH = 46, eGap = 16;
+    const int eW = 46, eH = 46, eGap = 16;
     juce::Rectangle<int> engineBar(0, 0, eW * 3 + eGap * 2, eH);
     engineBar = engineBar.withCentre(engineRow.getCentre());
     engineChordsBtn.setBounds(engineBar.removeFromLeft(eW));
@@ -537,7 +537,7 @@ void BANGAudioProcessorEditor::resized()
     updateRollContentSize();   // keeps the content wider than the viewport as needed :contentReference[oaicite:1]{index=1}
 
     // ---- Bottom big buttons ----
-    const int bigW = 300, bigH = 72;
+    const int bigW = 180, bigH = 72;
     auto bottom = r;
     auto leftBig = bottom.removeFromLeft(getWidth() / 2).removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
     auto rightBig = bottom.removeFromRight(bigW).withSizeKeepingCentre(bigW, bigH);
