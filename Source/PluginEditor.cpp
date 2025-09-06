@@ -339,8 +339,8 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     addAndMakeVisible(velocityLbl); velocityLbl.setText("VELOCITY", juce::dontSendNotification);
     addAndMakeVisible(swingLbl);    swingLbl.setText("SWING", juce::dontSendNotification);
     addAndMakeVisible(feelLbl);     feelLbl.setText("FEEL", juce::dontSendNotification);
-    for (auto* l : { &timingLbl, &velocityLbl, &swingLbl, &feelLbl })
-        l->setColour(juce::Label::textColourId, juce::Colours::black);
+    for (auto& l : { timingLbl, velocityLbl, swingLbl, feelLbl })
+        l.setColour(juce::Label::textColourId, juce::Colours::black);
 
     styleHumanSlider(timingSl);   timingSl.setValue(40.0); addAndMakeVisible(timingSl);   timingSl.addListener(this);
     styleHumanSlider(velocitySl); velocitySl.setValue(35.0); addAndMakeVisible(velocitySl); velocitySl.addListener(this);
@@ -767,7 +767,7 @@ void BANGAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
 
 void BANGAudioProcessorEditor::openAdvanced()
 {
-    auto* comp = new AdvancedHarmonyWindow(advOptions); // your existing editor for advanced harmony
+    auto* comp = new AdvancedHarmonyWindow(&advOptions); // your existing editor for advanced harmony
     juce::DialogWindow::LaunchOptions opts;
     opts.dialogTitle = "Advanced Harmony";
     opts.escapeKeyTriggersCloseButton = true;

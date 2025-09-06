@@ -38,7 +38,10 @@ private:
 
     // ===================== right humanize ========================
     juce::Label  humanizeTitle;
-    juce::Label  timingLbl, velocityLbl, swingLbl, feelLbl; // headings
+    juce::Label  timingLbl;
+    juce::Label  velocityLbl;
+    juce::Label  swingLbl;
+    juce::Label  feelLbl;
     juce::Slider timingSl, velocitySl, swingSl, feelSl;  // 0..100
 
     // ===================== center piano roll =====================

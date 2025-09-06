@@ -6,8 +6,8 @@ static void styleLabel(juce::Label& l)
     l.setColour(juce::Label::textColourId, juce::Colours::white);
 }
 
-AdvancedHarmonyWindow::AdvancedHarmonyWindow(AdvancedHarmonyOptions& opts)
-    : options(opts)
+AdvancedHarmonyWindow::AdvancedHarmonyWindow(AdvancedHarmonyOptions* opts)
+    : options(*opts)
 {
     // Extensions
     addAndMakeVisible(extButton); extButton.setToggleState(options.useExtensions, juce::dontSendNotification);
