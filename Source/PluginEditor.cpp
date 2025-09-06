@@ -767,7 +767,7 @@ void BANGAudioProcessorEditor::mouseDrag(const juce::MouseEvent& e)
 
 void BANGAudioProcessorEditor::openAdvanced()
 {
-    auto* comp = new AdvancedHarmonyWindow(advOptions); // your existing editor for advanced harmony
+    auto* comp = new AdvancedHarmonyWindow(*advOptions); // your existing editor for advanced harmony
     juce::DialogWindow::LaunchOptions opts;
     opts.dialogTitle = "Advanced Harmony";
     opts.escapeKeyTriggersCloseButton = true;
