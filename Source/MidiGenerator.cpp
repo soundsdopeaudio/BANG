@@ -2239,7 +2239,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
     // Normalize if it's 0..100 (UI slider) instead of 0..1
     if (rest01 > 1.0f) rest01 = juce::jlimit(0.0f, 1.0f, rest01 * 0.01f);
 
-    auto& rng = juce::Random::getSystemRandom();
+    // auto& rng = juce::Random::getSystemRandom(); // USE a seeded generator instead
 
     // --- 1) Make sure we have rhythm patterns (uses your PatternDB) ---
     if (rhythmDB.patterns.empty())
@@ -2296,7 +2296,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
     // ===== 1) Pick a DENSITY PATH for the whole riff =====
     enum class Density { Eighth, Quarter, Half, Sixteenth, Triplet8th };
     auto pickDensity = [&]()->Density {
-        float r = rng.nextFloat();
+        float r = (float)rand01();
         if (r < 0.45f) return Density::Eighth;
         if (r < 0.80f) return Density::Quarter;
         if (r < 0.95f) return Density::Half;
@@ -2339,18 +2339,18 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
 
     auto pickStartDegree = [&]()->int {
         const int options[] = { 0, 2, 4 };
-        return options[(size_t)(rng.nextInt(3))];
+        return options[(size_t)((int)(rand01() * 3))];
     };
 
     struct ContourStep { int rel; };
     auto makeContour = [&](int n)->std::vector<ContourStep> {
         std::vector<ContourStep> c; c.reserve((size_t)n);
-        int shape = rng.nextInt(3);
-        int dir = rng.nextBool() ? 1 : -1;
+        int shape = (int)(rand01() * 3);
+        int dir = (rand01() < 0.5) ? 1 : -1;
         int cur = 0;
         for (int i = 0; i < n; ++i) {
-            int step = (shape == 0 ? (i < n / 2 ? +1 : -1) : shape == 1 ? (i < n / 2 ? -1 : +1) : (rng.nextBool() ? +1 : -1));
-            if (rng.nextFloat() < 0.15f) step += (rng.nextBool() ? +1 : -1);
+            int step = (shape == 0 ? (i < n / 2 ? +1 : -1) : shape == 1 ? (i < n / 2 ? -1 : +1) : ((rand01() < 0.5) ? +1 : -1));
+            if (rand01() < 0.15f) step += ((rand01() < 0.5) ? +1 : -1);
             cur += step * dir;
             c.push_back({ step * dir });
         }
@@ -2411,16 +2411,16 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
 
         // small controlled variation on A' (pitch wiggle or one note skipped)
         if (vary == 1) {
-            if (!notes.empty() && rng.nextFloat() < 0.6f) {
-                size_t k = (size_t)rng.nextInt((int)notes.size());
-                int semis = (rng.nextBool() ? +2 : -2);
+            if (!notes.empty() && rand01() < 0.6f) {
+                size_t k = (size_t)(rand01() * notes.size());
+                int semis = (rand01() < 0.5) ? +2 : -2;
                 notes[k].pitch = juce::jlimit(melodyLow, melodyHigh, notes[k].pitch + semis);
             }
         }
         // B gets slight contour bias (up or down)
         if (vary == 2) {
-            int bias = (rng.nextBool() ? +2 : -2);
-            for (auto& n : notes) n.pitch = juce::jlimit(melodyLow, melodyHigh, n.pitch + (rng.nextFloat() < 0.5f ? bias : 0));
+            int bias = (rand01() < 0.5) ? +2 : -2;
+            for (auto& n : notes) n.pitch = juce::jlimit(melodyLow, melodyHigh, n.pitch + (rand01() < 0.5f ? bias : 0));
         }
 
         // apply bar offset
@@ -2496,7 +2496,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
         return (minorish ? minProg[bar % 4] : majProg[bar % 4]);
     };
 
-    auto emitChordFragment = [&](double s, double e, int barDeg)->void
+    auto emitChordFragment = [&](double s, double e, int barDeg, std::vector<Note>& fragment)
     {
         if (e - s < 0.125) return;
 
@@ -2504,13 +2504,6 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
         const bool strong = std::abs(std::fmod(s, 1.0)) < 1e-4;
         const double len = std::min(0.75, std::max(0.25, e - s));
         const uint8_t vel = bang_mapAccentToVelocity(0.65f, 92, 30);
-
-        auto pcInScale = [&](int pc) {
-            for (int iv : sc)
-                if (((rootPC + iv) % 12) == (pc % 12))
-                    return true;
-            return false;
-        };
 
         const int center = (this->chordLow + this->chordHigh) / 2;
         auto placePcNear = [&](int pc) {
@@ -2525,60 +2518,83 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
             return juce::jlimit(this->chordLow, this->chordHigh, pick);
         };
 
-        float randomChoice = (float)rand01();
-        bool generateExtended = advOpts_ && randomChoice < advOpts_->extensionDensity01;
+        // Decide fragment type: Dyad, Triad, or Extended
+        enum class FragType { Dyad, Triad, Extended };
+        FragType fragType;
 
+        if (advOpts_ != nullptr && advOpts_->extensionDensity01 > 0.0f)
+        {
+            const float r = (float)rand01();
+            if (r < advOpts_->extensionDensity01 * 0.5f)
+                fragType = FragType::Extended;
+            else if (r < advOpts_->extensionDensity01)
+                fragType = FragType::Triad;
+            else
+                fragType = FragType::Dyad;
+        }
+        else
+        {
+            // Default behavior: 50/50 mix of dyads and triads
+            fragType = (rand01() < 0.5) ? FragType::Dyad : FragType::Triad;
+        }
+
+        // --- Collect available tones based on fragment type ---
         auto triad = bang_triadSemisFromDegree(barDeg, sc);
         std::vector<int> availableTones(triad.begin(), triad.end());
 
-        if (generateExtended) {
+        if (fragType == FragType::Extended) {
             if (advOpts_->enableExt7) availableTones.push_back(10);
             if (advOpts_->enableExt9) availableTones.push_back(14);
             if (advOpts_->enableExt11) availableTones.push_back(17);
             if (advOpts_->enableExt13) availableTones.push_back(21);
             if (advOpts_->enableSus24) {
-                if (rng.nextBool()) availableTones[1] = 5; // sus4
+                if (rand01() < 0.5) availableTones[1] = 5; // sus4
                 else availableTones[1] = 2; // sus2
             }
             if (advOpts_->enableAltChords) {
-                if (rng.nextBool()) availableTones[2] = 8; // #5
+                if (rand01() < 0.5) availableTones[2] = 8; // #5
                 else availableTones.push_back(13); // b9
             }
         }
 
-        int numNotesToSelect = 2;
-        if (generateExtended) {
-             numNotesToSelect = juce::Random::getSystemRandom().nextInt({ 2, (int)availableTones.size() + 1 });
-        }
-        else if (rng.nextBool()) {
+        // --- Determine how many notes to play ---
+        int numNotesToSelect = 2; // Default for Dyad
+        if (fragType == FragType::Triad)
+        {
             numNotesToSelect = 3;
         }
+        else if (fragType == FragType::Extended)
+        {
+            // Pick 2, 3, or 4 notes for extended fragments
+            numNotesToSelect = 2 + (int)(rand01() * 3);
+        }
         numNotesToSelect = std::min((int)availableTones.size(), numNotesToSelect);
-        
-        for (int i = 0; i < availableTones.size() - 1; i++) {
-            int j = i + juce::Random::getSystemRandom().nextInt(availableTones.size() - i);
-            std::swap(availableTones[i], availableTones[j]);
-        }
-        std::vector<int> chordTones;
-        for (int i = 0; i < numNotesToSelect; ++i) {
-            chordTones.push_back(availableTones[i]);
-        }
+
+        // --- Shuffle and select tones ---
+        std::shuffle(availableTones.begin(), availableTones.end(), rng);
+        std::vector<int> chordTones(availableTones.begin(), availableTones.begin() + numNotesToSelect);
         std::sort(chordTones.begin(), chordTones.end());
 
-        if (advOpts_ && advOpts_->enableSlashChords && generateExtended && !chordTones.empty()) {
-            int bassNoteIndex = juce::Random::getSystemRandom().nextInt(chordTones.size());
-            int bassNote = chordTones[bassNoteIndex];
-            if (bassNote != 0) {
-                Note n;
-                n.pitch = placePcNear((rootPc + bassNote) % 12) - 12;
-                n.velocity = vel;
-                n.startBeats = s;
-                n.lengthBeats = len;
-                n.isOrnament = false;
-                chordPieces.push_back(n);
+        // --- Handle Slash Chords ---
+        if (advOpts_ && advOpts_->enableSlashChords && fragType == FragType::Extended && !chordTones.empty()) {
+            if (rand01() < 0.5) // 50% chance to add a slash bass note
+            {
+                int bassNoteIndex = (int)(rand01() * chordTones.size());
+                int bassNote = chordTones[bassNoteIndex];
+
+                if (bassNote != 0) { // Avoid adding the root as a slash note
+                    Note n;
+                    n.pitch = placePcNear((rootPc + bassNote) % 12) - 12; // One octave lower
+                    n.velocity = vel;
+                    n.startBeats = s;
+                    n.lengthBeats = len;
+                    n.isOrnament = false;
+                    fragment.push_back(n);
+                }
             }
         }
 
+        // --- Create and add notes to the fragment ---
         for (int semi : chordTones) {
             Note n;
             n.pitch = placePcNear((rootPc + semi) % 12);
@@ -2586,25 +2602,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
             n.startBeats = s;
             n.lengthBeats = len;
             n.isOrnament = false;
-            chordPieces.push_back(n);
-        }
-
-        if (chordTones.empty()) {
-            const int pApc = rootPc;
-            int pBpc = strong ? ((rootPc + 7) % 12)
-                : (pcInScale(rootPc + 4) ? ((rootPc + 4) % 12)
-                    : (pcInScale(rootPc + 3) ? ((rootPc + 3) % 12)
-                        : ((rootPc + 7) % 12)));
-            int midiA = placePcNear(pApc);
-            int midiB = placePcNear(pBpc);
-
-            while (std::abs(midiB - midiA) > 12)
-                midiB += (midiB < midiA ? +12 : -12);
-
-            Note d1; d1.pitch = midiA; d1.velocity = vel; d1.startBeats = s; d1.lengthBeats = len; d1.isOrnament = false;
-            Note d2; d2.pitch = midiB; d2.velocity = vel; d2.startBeats = s; d2.lengthBeats = len; d2.isOrnament = false;
-            chordPieces.push_back(d1);
-            chordPieces.push_back(d2);
+            fragment.push_back(n);
         }
     };
 
@@ -2714,7 +2712,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
                 const double e = std::min<double>(s + maxLen, ge - 0.02);   // force double
                 if (e - s < minRoom) continue;
 
-                emitChordFragment(s, e, barDeg);
+                emitChordFragment(s, e, barDeg, chordPieces);
                 ++placedInBar;
             }
         }
@@ -2754,7 +2752,7 @@ MidiGenerator::MixBundle MidiGenerator::generateMelodyAndChords(bool avoidOverla
             const double barStart = (double)bar * (double)tsNum;
             const double s = barStart;
             const double e = std::min(barStart + 0.50, barStart + (double)tsNum);
-            emitChordFragment(s, e, barDeg);
+            emitChordFragment(s, e, barDeg, chordPieces);
         }
     }
 
