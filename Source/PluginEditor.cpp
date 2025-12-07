@@ -465,7 +465,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     crLbl.setImagePlacement(juce::RectanglePlacement::centred);
 
     addAndMakeVisible(crToggle);
-    crToggle.setClickingTogglesState(false);
+    crToggle.setClickingTogglesState(true);
     // Use the helper that tries many basename variants: it will find "checkboxOffBtn.png" / "checkboxOnBtn.png"
     setImageButton3(crToggle, { "checkboxOffBtn", "checkboxOnBtn" });
     crToggle.onClick = [this]() {
@@ -484,6 +484,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
 
     addAndMakeVisible(motifToggle);
     motifToggle.setClickingTogglesState(true);
+    motifToggle.setToggleState(true, juce::dontSendNotification);
     setImageButton3(motifToggle, { "checkboxOffBtn", "checkboxOnBtn" });
     motifToggle.onClick = [this]() {
         audioProcessor.getMidiGenerator().setMotifModeEnabled(motifToggle.getToggleState());
@@ -570,7 +571,7 @@ BANGAudioProcessorEditor::BANGAudioProcessorEditor(BANGAudioProcessor& p)
     counterLbl.setImagePlacement(juce::RectanglePlacement::centred);
 
     addAndMakeVisible(counterToggle);
-    counterToggle.setClickingTogglesState(false);
+    counterToggle.setClickingTogglesState(true);
     setImageButton3(counterToggle, { "checkboxOffBtn", "checkboxOnBtn" });
     counterToggle.onClick = [this]() {
         audioProcessor.getMidiGenerator().setCounterEnabled(counterToggle.getToggleState());
@@ -812,7 +813,7 @@ void BANGAudioProcessorEditor::resized()
         selectEngineImg.setBounds(topRow);
     }
 
-    
+
     // ---- Row 1: Engine selector row ----
     auto engineRow = bounds.removeFromTop(60);
     {
@@ -840,7 +841,7 @@ void BANGAudioProcessorEditor::resized()
         const int comboW = 160;
         const int comboH = 17;
         const int itemGap = 5;
-        
+
         auto comboArea = leftCol.withTrimmedTop(48);
 
         auto createComboRow = [&](juce::ImageComponent& label, juce::Component& combo)
@@ -910,9 +911,9 @@ void BANGAudioProcessorEditor::resized()
         const int humanizeSliderWidth = 250;
         const int sliderHeight = 30;
         const int humanizeW = 180, humanizeH = 28, humanizeTopPad = 8;
-        
+
         auto humanizeArea = rightCol.withTrimmedTop(20);
-        
+
         // Humanize Label
         humanizeLblImg.setBounds(humanizeArea.getCentreX() - humanizeW / 2, humanizeArea.getY(), humanizeW, humanizeH);
         humanizeArea.removeFromTop(humanizeH + humanizeTopPad);
@@ -931,6 +932,9 @@ void BANGAudioProcessorEditor::resized()
         polyrBtn.setBounds(humanizeArea.withSizeKeepingCentre(140, 44));
     }
 
+    {
+    }
+
     // ---- Center Logo ----
     {
         int logoW = 350;
@@ -942,7 +946,7 @@ void BANGAudioProcessorEditor::resized()
         }
         logoImg.setBounds(logoCol.withSizeKeepingCentre(logoW, logoH).translated(0, -20)); // Nudge down a bit
     }
-   
+
 
     // ---- Row 3: Harmony Buttons (Reharmonize, Advanced, Adjust) ----
     auto harmonyRow = bounds.removeFromTop(62);
@@ -963,51 +967,64 @@ void BANGAudioProcessorEditor::resized()
         advancedBtn.setBounds(harmonyButtonArea.getCentreX() - advBtnW / 2, harmonyButtonArea.getY(), advBtnW, advBtnH);
     }
 
-    const int rightMargin = 12;
-    const int topY = 12; // vertical position for labels — adjust if you need them vertically centered with other stuff
-    const int labelW = 72;   // width for the image labels
-    const int labelH = 28;   // height for the image labels
-    const int ctrlW_labelToggle = 28; // toggle image button square
-    const int ctrlH_toggle = 28;
-    const int comboW = 56;
-    const int comboH = 24;
-    const int gapX = 8;      // horizontal spacing between label and control
-    const int groupGap = 14; // spacing between groups
+    auto harmonyTogglesRow = bounds.removeFromTop(140);
+    {
+        // A single, centered column for the new vertical layout
+        auto centeredCol = harmonyTogglesRow.withSizeKeepingCentre(300, harmonyTogglesRow.getHeight());
 
-    // group widths
-    const int group0 = labelW + gapX + ctrlW_labelToggle; // CR
-    const int group1 = labelW + gapX + ctrlW_labelToggle; // Motif
-    const int group2 = labelW + gapX + comboW;            // Stacks
-    const int group3 = labelW + gapX + ctrlW_labelToggle; // Counter
+        const int itemH = 30; // Fixed height for each item row
+        const int gap = 4;    // Vertical and horizontal gap
 
-    const int totalWidth = group0 + groupGap + group1 + groupGap + group2 + groupGap + group3;
+        // Helper lambda to lay out a label and its toggle button
+        auto layoutItem = [&](juce::ImageComponent& lbl, juce::ImageButton& toggle)
+        {
+            auto rowBounds = centeredCol.removeFromTop(itemH);
 
-    int x = getWidth() - rightMargin - totalWidth;
-    if (x < 8) x = 8; // safety floor
+            // Size and place the label based on its image's aspect ratio
+            auto lblImg = lbl.getImage();
+            if (lblImg.isValid() && lblImg.getHeight() > 0)
+            {
+                const float ar = (float)lblImg.getWidth() / lblImg.getHeight();
+                const int lblW = (int)(itemH * ar);
+                lbl.setBounds(rowBounds.removeFromLeft(lblW));
+            }
 
-    // CR (label + toggle)
-    crLbl.setBounds(x, topY, labelW, labelH);
-    x += labelW + gapX;
-    crToggle.setBounds(x, topY, ctrlW_labelToggle, ctrlH_toggle);
-    x += ctrlW_labelToggle + groupGap;
+            rowBounds.removeFromLeft(gap); // Space between label and button
 
-    // Motif
-    motifLbl.setBounds(x, topY, labelW, labelH);
-    x += labelW + gapX;
-    motifToggle.setBounds(x, topY, ctrlW_labelToggle, ctrlH_toggle);
-    x += ctrlW_labelToggle + groupGap;
+            // Size and place the toggle button based on its image's aspect ratio
+            auto tglImg = toggle.getNormalImage();
+            if (tglImg.isValid() && tglImg.getHeight() > 0)
+            {
+                const float ar = (float)tglImg.getWidth() / tglImg.getHeight();
+                const int tglW = (int)(itemH * ar);
+                toggle.setBounds(rowBounds.removeFromLeft(tglW));
+            }
 
-    // Stacks (label + combobox)
-    stacksLbl.setBounds(x, topY, labelW, labelH);
-    x += labelW + gapX;
-    stacksBox.setBounds(x, topY + (labelH - comboH) / 2, comboW, comboH);
-    x += comboW + groupGap;
+            centeredCol.removeFromTop(gap); // Space before the next item
+        };
 
-    // Counter (label + toggle)
-    counterLbl.setBounds(x, topY, labelW, labelH);
-    x += labelW + gapX;
-    counterToggle.setBounds(x, topY, ctrlW_labelToggle, ctrlH_toggle);
-    // x += ctrlW_labelToggle + groupGap; // not needed further
+        // Lay out the four rows as per the mockup
+        layoutItem(crLbl, crToggle);
+        layoutItem(motifLbl, motifToggle);
+
+        // Special case for Stacks (Label + ComboBox)
+        {
+            auto rowBounds = centeredCol.removeFromTop(itemH);
+            auto lblImg = stacksLbl.getImage();
+            if (lblImg.isValid() && lblImg.getHeight() > 0)
+            {
+                const float ar = (float)lblImg.getWidth() / lblImg.getHeight();
+                const int lblW = (int)(itemH * ar);
+                stacksLbl.setBounds(rowBounds.removeFromLeft(lblW));
+            }
+            rowBounds.removeFromLeft(gap);
+            stacksBox.setBounds(rowBounds.removeFromLeft(80)); // Set a fixed width for the ComboBox
+            centeredCol.removeFromTop(gap);
+        }
+
+        layoutItem(counterLbl, counterToggle);
+    }
+
 
     // ---- Row 5 (Bottom): Generate and Drag buttons ----
     auto bottomArea = bounds.removeFromBottom(100);
@@ -1062,7 +1079,7 @@ void BANGAudioProcessorEditor::resized()
         keepReharmToggle.setLookAndFeel(nullptr);
 
     }
-    
+
     bounds.removeFromTop(rowGap);
     bounds.removeFromBottom(rowGap);
 
@@ -1082,7 +1099,8 @@ void BANGAudioProcessorEditor::resized()
             + 60   // engineRow
             + rowGap
             + 265  // mainControlsRow (height reduced to tighten margins)
-            + 62;  // harmonyRow (no extra gap below)
+            + 62  // harmonyRow (no extra gap below)
+            + 140; // harmonyTogglesRow
 
         // Sum the fixed-height rows we placed BELOW the roll.
         // These are laid out from the bottom of the padded bounds.
@@ -1093,7 +1111,7 @@ void BANGAudioProcessorEditor::resized()
         // Whatever remains is the roll area
         auto rollArea = full.withTrimmedTop(topUsed)
             .withTrimmedBottom(bottomUsed);
-        
+
         rollArea = rollArea.withSizeKeepingCentre(harmonyAreaWidth, rollArea.getHeight());
 
         // If for any reason the math left too little space, clamp to a visible minimum
@@ -1105,7 +1123,7 @@ void BANGAudioProcessorEditor::resized()
     }
 
     // ---- Ensure all buttons sit above the roll ----
-    
+
     // ---- Tooltips ----
     diceBtn.setTooltip("Randomizes all settings (except for bars and octave) and generates MIDI based on those.");
     engineMelodyBtn.setTooltip("Generates a melody based on the selected settings.");
@@ -1693,12 +1711,12 @@ void BANGAudioProcessorEditor::openPolyrhythm()
             addAndMakeVisible(poly32Btn);
             addAndMakeVisible(poly54Btn);
             addAndMakeVisible(poly74Btn);
-            
+
             poly23Btn.setRadioGroupId(2002);
             poly32Btn.setRadioGroupId(2002);
             poly54Btn.setRadioGroupId(2002);
             poly74Btn.setRadioGroupId(2002);
-            
+
             poly23Btn.setToggleState(true, juce::dontSendNotification);
 
             // === Toggle callbacks: set the generator mode immediately ===
@@ -1785,9 +1803,9 @@ void BANGAudioProcessorEditor::openPolyrhythm()
 
             auto topBar = bounds.removeFromTop(80);
             topBar.reduce(pad, 0);
-            
+
             diceBtn.setBounds(topBar.removeFromRight(50).withSizeKeepingCentre(44, 44));
-            
+
             polyLbl.setBounds(topBar);
             polyLbl.setImagePlacement(juce::RectanglePlacement::centred);
             // Nudge the label to the right for better visual alignment
@@ -1800,10 +1818,10 @@ void BANGAudioProcessorEditor::openPolyrhythm()
             typeLbl.setImagePlacement(juce::RectanglePlacement::centred);
 
             auto togglesArea = bounds.removeFromTop(60);
-            
+
             const int numToggles = 4;
             const int labelWidth = 60;
-            
+
             juce::Image toggleImage = loadImageByHint("toggleBtnOn");
             double toggleAspectRatio = toggleImage.isValid() ? (double)toggleImage.getWidth() / (double)toggleImage.getHeight() : 2.816; // 352x125
             const int toggleHeight = 45;
@@ -1811,7 +1829,7 @@ void BANGAudioProcessorEditor::openPolyrhythm()
 
             const int itemWidth = labelWidth + toggleWidth;
             const int totalTogglesWidth = itemWidth * numToggles;
-            
+
             togglesArea.reduce((togglesArea.getWidth() - totalTogglesWidth) / 2, 0);
 
             auto createToggleRow = [&](juce::ImageComponent& label, juce::ToggleButton& button)
@@ -1826,7 +1844,7 @@ void BANGAudioProcessorEditor::openPolyrhythm()
             createToggleRow(thirtyTwoLbl, poly32Btn);
             createToggleRow(fiftyFourLbl, poly54Btn);
             createToggleRow(seventyFourLbl, poly74Btn);
-            
+
             bounds.removeFromTop(pad);
 
             auto densityArea = bounds.removeFromTop(60);
@@ -1843,7 +1861,7 @@ void BANGAudioProcessorEditor::openPolyrhythm()
 
             bounds.removeFromTop(pad * 2);
             auto enableArea = bounds.removeFromTop(150); // Increased height for the area
-            
+
             constexpr int largeButtonHeight = 150;
             const int btnHeight = largeButtonHeight;
             auto btnImg = enablePassBtn.getNormalImage();
@@ -1874,7 +1892,7 @@ void BANGAudioProcessorEditor::openPolyrhythm()
     opts.content.setOwned(comp);
     if (auto* w = opts.launchAsync())
         w->centreWithSize(720, 560);
-    
+
 
 }
 
@@ -2091,7 +2109,7 @@ void BANGAudioProcessorEditor::openReharmonize()
                     dw->exitModalState(0);
             };
         }
-       
+
         void paint(juce::Graphics& g) override
         {
             g.fillAll(juce::Colour::fromRGB(0xA5, 0xDD, 0x00));
@@ -2100,7 +2118,7 @@ void BANGAudioProcessorEditor::openReharmonize()
         void resized() override
         {
             auto bounds = getLocalBounds();
-            
+
             // Top-right dice button
             diceBtn.setBounds(getWidth() - 50, 10, 40, 40);
 
@@ -2123,7 +2141,7 @@ void BANGAudioProcessorEditor::openReharmonize()
             auto keepRow = bounds.removeFromTop(50);
             keepFirst4BarsLbl.setBounds(keepRow.removeFromLeft(180).reduced(5));
             keepBarsToggle.setBounds(keepRow.withSizeKeepingCentre(keepBarsToggle.getWidth(), keepBarsToggle.getHeight()));
-            
+
             bounds.removeFromTop(40);
 
             // Centered Regenerate button at the bottom
@@ -2132,7 +2150,7 @@ void BANGAudioProcessorEditor::openReharmonize()
             auto regenImg = regenerateBtn.getNormalImage();
             int btnWidth = btnHeight;
             if (regenImg.isValid() && regenImg.getHeight() > 0)
-                btnWidth = regenImg.getWidth() * btnHeight / regenImg.getHeight();
+                btnWidth = regenImg.getWidth() * btnHeight / btnImg.getHeight();
 
             regenerateBtn.setBounds(bounds.getCentreX() - btnWidth / 2,
                                     bounds.getBottom() - btnHeight - 20,
@@ -2350,7 +2368,7 @@ void BANGAudioProcessorEditor::openAdjust()
             auto regenImg = regenerateBtn.getNormalImage();
             int btnWidth = btnHeight;
             if (regenImg.isValid() && regenImg.getHeight() > 0)
-                btnWidth = regenImg.getWidth() * btnHeight / regenImg.getHeight();
+                btnWidth = regenImg.getWidth() * btnHeight / btnImg.getHeight();
 
             regenerateBtn.setBounds(bottomArea.withSizeKeepingCentre(btnWidth, btnHeight));
             r.removeFromBottom(16);
